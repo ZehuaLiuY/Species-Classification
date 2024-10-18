@@ -3,8 +3,8 @@ import json
 import cv2
 
 image_folder = r'H:/DATASET/NACTI/images/nactiPart3/'
-json_file = r'H:/DATASET/NACTI/result/part3output.json'
-output_folder = r'G:\result'
+json_file = r'part3output.json'
+output_folder = r'G:\result\detected'
 
 os.makedirs(output_folder, exist_ok=True)
 
