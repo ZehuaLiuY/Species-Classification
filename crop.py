@@ -26,7 +26,7 @@ for image_data in detections['images']:
             cropped_image = image.crop((x * image.width, y * image.height,
                                         (x + w) * image.width, (y + h) * image.height))
             # save cropped image
-            cropped_image_name = f"{os.path.splitext(os.path.basename(image_data['file']))[0]}_crop_{idx}.png"
+            cropped_image_name = f"{os.path.splitext(os.path.basename(image_data['file']))[0]}_crop_{idx}.jpg"
             cropped_image_path = os.path.join(output_folder, cropped_image_name)
             cropped_image.save(cropped_image_path)
             print(f"saving cropped image: {cropped_image_path}")
