@@ -19,5 +19,6 @@ pw_utils.save_detection_json(results, os.path.join(".","part0output.json"),
                              exclude_category_ids=[], # Category IDs can be found in the definition of each model.
                              exclude_file_path=None)
 # Save images
-pw_utils.save_detection_images(results, "batch_output", overwrite=False)
+# pw_utils.save_detection_images(results, "batch_output", overwrite=False)
+print("Saving cripped images...")
 pw_utils.save_crop_images(results, "crop_output", overwrite=False)
