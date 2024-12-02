@@ -25,12 +25,9 @@ CLASS_NAMES = {0: 'Dasyprocta', 1: 'Bos', 2: 'Pecari', 3: 'Mazama', 4: 'Cuniculu
 # Paths
 image_folder = r'G:\result\detected'
 output_folder = r'G:\result\cropped_images'
-labeled_folder = r'G:\result\labeled_images'
-json_file = '../part0output.json'
+json_file = r'E:\result\json\detection\part3output.json'
 classification_results_csv = 'classification_results.csv'
 
-# Create necessary folders
-os.makedirs(labeled_folder, exist_ok=True)
 
 # Load detections
 with open(json_file) as f:
@@ -71,7 +68,8 @@ with torch.no_grad():
             })
             print(f"Cropped image from {img_path} classified as: {predicted_class.item()} with probability: {prob.item():.2f}")
 
-# Save classification results to CSV
-classification_df = pd.DataFrame(classification_results)
-classification_df.to_csv(classification_results_csv, index=False)
-print(f"Classification results saved to {classification_results_csv}")
+# Save classification results to JSON
+classification_results_json =  r'G:\result\E:\result\json\classification\part0.json'
+with open(classification_results_json, 'w', encoding='utf-8') as json_file:
+    json.dump(classification_results, json_file, indent=4, ensure_ascii=False)
+print(f"Classification results saved to {classification_results_json}")

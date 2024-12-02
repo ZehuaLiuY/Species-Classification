@@ -4,8 +4,8 @@ from PIL import Image
 
 # paths
 image_folder = r'G:\result\detected'
-json_file = 'part3output.json'
-output_folder = r'G:\result\cropped_images'
+json_file = r'E:\result\json\detection\part3output.json'
+output_folder = r'E:\result\crops\part3'
 
 # mkdir
 if not os.path.exists(output_folder):

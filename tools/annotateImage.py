@@ -8,7 +8,7 @@ image_folder = r'G:\result\detected'
 output_folder = r'G:\result\cropped_images'
 labeled_folder = r'G:\result\labeled_images'
 species_folder = r'G:\result\species'
-json_file = '../part3output.json'
+json_file = '../result/part3output.json'
 classification_results_csv = '../classification_results.csv'
 
 # Load classification results
