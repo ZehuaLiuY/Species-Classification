@@ -10,7 +10,7 @@ print(f'Using device: {device}')
 detection_model = pw_detection.MegaDetectorV6(device=device, pretrained=True, version="yolov9c")
 dataset_path = r"F:\DATASET\NACTI\images\nacti_part0"
 
-results = detection_model.batch_image_detection(dataset_path, batch_size=256)
+results = detection_model.batch_image_detection(dataset_path, batch_size=128)
 batch_output = r'E:\result\annotated_images'
 crop_output = r'E:\result\crops\part0'
 json_path = r'E:\result\json\part0output.json'
