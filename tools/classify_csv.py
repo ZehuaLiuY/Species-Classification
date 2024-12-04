@@ -4,10 +4,10 @@ import torch
 from PIL import Image
 import torchvision.transforms as transforms
 from PytorchWildlife.models import classification as pw_classification
-
+from tqdm import tqdm
 # Paths
-json_file = r'E:\result\json\detection\part0output.json'
-classification_results_json = r'F:\DATASET\NACTI\classification_results_named.json'
+json_file = r'E:\result\json\detection\part1output.json'
+classification_results_json = r'E:\result\json\classification\classification_part1.json'
 
 CLASS_NAMES = {
     0: 'Dasyprocta', 1: 'Bos', 2: 'Pecari', 3: 'Mazama', 4: 'Cuniculus',
@@ -39,7 +39,7 @@ with open(json_file, 'r') as f:
     annotations = json.load(f)["annotations"]
 
 # Iterate through annotations
-for annotation in annotations:
+for annotation in tqdm(annotations):
     img_path = annotation["img_id"]
     if not os.path.exists(img_path):
         print(f"Image {img_path} not found, skipping.")
@@ -47,7 +47,7 @@ for annotation in annotations:
 
     # Open image
     image = Image.open(img_path).convert("RGB")
-    print(f"Processing image: {img_path}")
+    # print(f"Processing image: {img_path}")
 
     for bbox, category, confidence in zip(annotation["bbox"], annotation["category"], annotation["confidence"]):
         x_min, y_min, x_max, y_max = map(int, bbox)
@@ -71,12 +71,12 @@ for annotation in annotations:
         classification_results.append({
             'img_id': img_path,
             'bbox': bbox,
-            'ground_truth_category': CLASS_NAMES[category] if category in CLASS_NAMES else 'Unknown',
+            'all_confidences': CLASS_NAMES[category] if category in CLASS_NAMES else 'Unknown',
             'detection_confidence': confidence,
             'predicted_class': predicted_class_name,
             'classification_confidence': max_prob.item(),
         })
-        print(f"Detection {bbox} classified as: {predicted_class_name} with probability: {max_prob.item():.2f}")
+        # print(f"Detection {bbox} classified as: {predicted_class_name} with probability: {max_prob.item():.2f}")
 
 # Save classification results to JSON
 with open(classification_results_json, 'w', encoding='utf-8') as f:
