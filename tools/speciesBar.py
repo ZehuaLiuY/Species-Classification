@@ -1,7 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 
-datapath = r'H:\DATASET\NACTI\meta\nacti_metadata.csv'
+datapath = r'F:\DATASET\NACTI\meta\nacti_metadata.csv'
 df = pd.read_csv(datapath)
 
 species_counts = df['common_name'].value_counts()
