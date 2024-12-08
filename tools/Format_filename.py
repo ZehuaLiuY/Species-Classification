@@ -1,3 +1,4 @@
+import json
 import os
 
 import pandas as pd
@@ -20,5 +21,9 @@ pred_df['img_id'] = pred_df['img_id'].str.replace(r'^.*\\', '', regex=True)
 output_dir = r'F:\DATASET\NACTI\processed_meta'
 os.makedirs(output_dir, exist_ok=True)
 gt_df.to_csv(os.path.join(output_dir, 'nacti_metadata_part0.csv'), index=False)
-pred_output_path = os.path.join(output_dir, 'classification_part0.json')
-pred_df.to_json(pred_output_path, orient='records', indent=4, force_ascii=False)
+
+# process json file
+formatted_json_path = os.path.join(output_dir, 'classification_part0_formatted.json')
+with open(formatted_json_path, 'w', encoding='utf-8') as file:
+    json_data = json.loads(pred_df.to_json(orient='records', force_ascii=False))
+    json.dump(json_data, file, indent=4, ensure_ascii=False, separators=(',', ': '))
