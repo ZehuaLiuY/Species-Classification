@@ -1,7 +1,7 @@
 import os
 import shutil
 
-source_path = r"F:\DATASET\NACTI\images\part2"
+source_path = r"F:\DATASET\NACTI\images"
 
 target_folder = r"F:\DATASET\NACTI\images\nacti_part2"
 

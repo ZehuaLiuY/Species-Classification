@@ -14,8 +14,8 @@ class NACTIAnnotationDataset(Dataset):
             data = json.load(f)
 
         self.annotations = data['annotations']
-        self.categories = {cat['id']: cat['name'] for cat in data['categories']}
-        self.image_id_to_file = {img['id']: img['file_name'] for img in data.get('images', [])}
+        # self.categories = {cat['id']: cat['name'] for cat in data['categories']}
+        # self.image_id_to_file = {img['id']: img['file_name'] for img in data.get('images', [])}
 
         self.csv_data = pd.read_csv(csv_path)
         self.csv_data['filename'] = self.csv_data['filename'].apply(lambda x: x.split('/', 2)[-1])
@@ -27,24 +27,25 @@ class NACTIAnnotationDataset(Dataset):
     def __getitem__(self, idx):
         annotation = self.annotations[idx]
 
-        image_id = annotation['image_id']
-        img_filename = self.image_id_to_file.get(image_id, f"{image_id}.jpg")
-
-        img_filename_cleaned = img_filename.split('/', 2)[-1]
-        img_path = os.path.join(self.image_dir, img_filename_cleaned)
-
+        img_path = annotation['img_id']
         if not os.path.exists(img_path):
             raise FileNotFoundError(f"Image not found at: {img_path}")
 
         image = Image.open(img_path).convert("RGB")
 
-        bbox = annotation['bbox']  # [x_min, y_min, width, height]
-        label = annotation['category_id']
+        # Handle missing or empty bbox
+        if not annotation.get('bbox') or len(annotation['bbox']) == 0:
+            # raise ValueError(f"Missing or empty bbox in annotation: {annotation}")
+            # just skip this annotation
+            return None
 
-        bbox[2] = bbox[0] + bbox[2]
-        bbox[3] = bbox[1] + bbox[3]
+        bbox = annotation['bbox'][0]
+        label = annotation.get('category', [0])[0]  # Default to category 0 if missing
 
-        common_name = self.filename_to_common_name.get(img_filename_cleaned, "unknown")
+        bbox = [bbox[0], bbox[1], bbox[2] - bbox[0], bbox[3] - bbox[1]]
+
+        img_filename = os.path.basename(img_path)
+        common_name = self.filename_to_common_name.get(img_filename, "unknown")
 
         target = {
             "boxes": torch.tensor([bbox], dtype=torch.float32),
@@ -52,14 +53,16 @@ class NACTIAnnotationDataset(Dataset):
             "common_name": common_name
         }
 
+        # Apply transforms if provided
         if self.transforms:
             image = self.transforms(image)
 
         return image, target
 
+
 dataset = NACTIAnnotationDataset(
     image_dir=r"F:\DATASET\NACTI\images\nacti_part0",
-    json_path=r"F:\DATASET\NACTI\meta\nacti_20230920_bboxes.json",
+    json_path=r"E:\result\json\detection\part0output.json",
     csv_path=r"F:\DATASET\NACTI\meta\nacti_metadata_part0.csv"
 )
 
