@@ -10,80 +10,75 @@ from src.dataset import NACTIAnnotationDataset
 from torch.utils.data import DataLoader
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
-# Transform for classification
+# We use scikit-learn metrics for precision, recall, and f1-score.
+from sklearn.metrics import precision_score, recall_score, f1_score
+
+################################################################################
+# Data transformations
+################################################################################
 transform = transforms.Compose([
     transforms.Resize((512, 512)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
-# Load model
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Using device: {device}")
-
-classification_model = pw_classification.AI4GAmazonRainforest(device=device)
-
-# number of classes
-num_classes = 36 # the default number of classes in AI4GAmazonRainforest model
-
-# split the dataset into training and validation part 80% and 20%
-dataset = NACTIAnnotationDataset(
-    image_dir=r"F:\DATASET\NACTI\images\nacti_part0",
-    json_path=r"E:\result\json\detection\part0output.json",
-    csv_path=r"F:\DATASET\NACTI\meta\nacti_metadata_part0.csv",
-    transforms=transform
-)
-
+################################################################################
+# Collate function to remove invalid samples
+################################################################################
 def collate_fn_remove_none(batch):
-    # batch [(image, target), (image, target), ...]
-    # if image or target is None, remove it
-    filtered_batch  = [item for item in batch if item is not None]
+    """
+    Custom collate function to remove None samples.
+    batch is a list of (image, target) tuples.
+    If image or target is None, remove that sample.
+    Return None, None if all items are None.
+    """
+    filtered_batch = [item for item in batch if item is not None]
     if len(filtered_batch) == 0:
         return None, None
-    imgs, tgts = zip(*filtered_batch )
+    imgs, tgts = zip(*filtered_batch)
     return list(imgs), list(tgts)
 
-train_size = int(0.8 * len(dataset))
-val_size = int(0.1 * len(dataset))
-test_size = len(dataset) - train_size - val_size
+################################################################################
+# Train / Validate / Test functions
+################################################################################
+def train_one_epoch(model,
+                    loader,
+                    optimizer,
+                    criterion,
+                    device,
+                    writer,
+                    epoch,
+                    global_step_start=0,
+                    log_interval=5):
+    """
+    Trains the model for one epoch.
 
-train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size])
+    Args:
+        model (nn.Module): The PyTorch model to train.
+        loader (DataLoader): DataLoader for the training set.
+        optimizer (Optimizer): The optimizer to update model parameters.
+        criterion (nn.Module): The loss function.
+        device (torch.device): Device on which to perform training.
+        writer (SummaryWriter): TensorBoard writer for logging (can be None if not used).
+        epoch (int): Current epoch index (for logging).
+        global_step_start (int): The global step counter at the beginning of this epoch.
+        log_interval (int): Batch interval for logging.
 
-train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True,
-                          collate_fn=collate_fn_remove_none)
-val_loader = DataLoader(val_dataset, batch_size=8, shuffle=False,
-                        collate_fn=collate_fn_remove_none)
-test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False,
-                         collate_fn=collate_fn_remove_none)
-
-# fine-tune the model
-# set the model to training mode and define the optimizer and loss function
-classification_model.to(device)
-optimizer = optim.AdamW(classification_model.parameters(), lr=0.0001)
-criterion = torch.nn.CrossEntropyLoss()
-
-# training loop
-num_epochs = 10
-writer = SummaryWriter()
-global_step = 0
-
-for epoch in range(num_epochs):
-    #################
-    # training phase
-    #################
-    classification_model.train()
+    Returns:
+        (float, float, int) : A tuple of (epoch_loss, epoch_acc, new_global_step).
+    """
+    model.train()
     running_loss = 0.0
     correct = 0
     total = 0
-    batch_acc = 0
-    batch_loss = 0
 
-    for batch in tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs} [Train]"):
+    global_step = global_step_start
+
+    for batch_idx, batch in enumerate(tqdm(loader, desc=f"Epoch {epoch} [Train]")):
         if batch[0] is None:
-            # Skip batch if it is empty
             continue
+
         global_step += 1
         images, targets = batch
 
@@ -92,57 +87,72 @@ for epoch in range(num_epochs):
         # the target is a dictionary with keys: boxes, labels, common_name
         labels = [t["labels"][0] for t in targets]
         labels = torch.tensor(labels, dtype=torch.long).to(device)
+        print(f"labels: {labels}")
+
+        outputs = model(images)
+        print(f"outputs: {outputs}")
+
+        loss = criterion(outputs, labels)
+        print(f"loss: {loss}")
 
         optimizer.zero_grad()
-        outputs = classification_model(images)
-        loss = criterion(outputs, labels)
-
         loss.backward()
         optimizer.step()
 
+        # Accumulate epoch loss
         running_loss += loss.item() * images.size(0)
 
-        # get the predicted class
+        # Calculate batch accuracy
         _, predicted = torch.max(outputs, 1)
-        # print(predicted)
         correct += (predicted == labels).sum().item()
         total += labels.size(0)
 
-        batch_loss = loss.item()
-        batch_acc = (predicted == labels).float().mean().item()
-        # # add the loss and accuracy to tensorboard for every 5 batches
-        if batch % 5 == 0:
+        # Optional: log batch metrics
+        if writer is not None and ((batch_idx + 1) % log_interval == 0):
+            batch_acc = (predicted == labels).float().mean().item()
             writer.add_scalar('Train/Loss_batch', loss.item(), global_step)
             writer.add_scalar('Train/Accuracy_batch', batch_acc, global_step)
-        # print(f"Batch Loss: {batch_loss:.4f}, Batch Acc: {batch_acc:.4f}")
-
 
     epoch_loss = running_loss / total if total > 0 else 0.0
     epoch_acc = correct / total if total > 0 else 0.0
-    print(f"[Train] Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss:.4f}, Acc: {epoch_acc:.4f}")
 
-    #################
-    # validation phase
-    #################
-    classification_model.eval()
+    return epoch_loss, epoch_acc, global_step
+
+
+def validate(model, loader, criterion, device, writer, epoch):
+    """
+    Validates the model over the validation set.
+
+    Args:
+        model (nn.Module): The PyTorch model to validate.
+        loader (DataLoader): DataLoader for the validation set.
+        criterion (nn.Module): The loss function for computing validation loss.
+        device (torch.device): Device on which to perform validation.
+        writer (SummaryWriter): TensorBoard writer for logging (can be None if not used).
+        epoch (int): Current epoch index (for logging).
+
+    Returns:
+        tuple: (val_loss, val_acc, val_precision, val_recall, val_f1)
+    """
+    model.eval()
     val_loss = 0.0
     val_correct = 0
     val_total = 0
 
+    all_preds = []
+    all_labels = []
+
     with torch.no_grad():
-        for batch in tqdm(val_loader, desc=f"Epoch {epoch+1}/{num_epochs} [Val]"):
+        for batch in tqdm(loader, desc=f"Epoch {epoch} [Val]"):
             if batch[0] is None:
                 continue
             images, targets = batch
-
-            images = list(images)
-            targets = list(targets)
 
             images = torch.stack(images).to(device)
             labels = [t["labels"][0] for t in targets]
             labels = torch.tensor(labels, dtype=torch.long).to(device)
 
-            outputs = classification_model(images)
+            outputs = model(images)
             loss = criterion(outputs, labels)
 
             val_loss += loss.item() * images.size(0)
@@ -151,38 +161,171 @@ for epoch in range(num_epochs):
             val_correct += (predicted == labels).sum().item()
             val_total += labels.size(0)
 
-    val_epoch_loss = val_loss / val_total if val_total > 0 else 0.0
-    val_epoch_acc = val_correct / val_total if val_total > 0 else 0.0
-    print(f"[Val]   Epoch {epoch+1}/{num_epochs}, Loss: {val_epoch_loss:.4f}, Acc: {val_epoch_acc:.4f}")
+            all_preds.extend(predicted.cpu().tolist())
+            all_labels.extend(labels.cpu().tolist())
 
-# testing phase
-classification_model.eval()
-test_loss = 0.0
-test_correct = 0
-test_total = 0
+    val_loss /= val_total if val_total > 0 else 1
+    val_acc = val_correct / val_total if val_total > 0 else 0
 
-with torch.no_grad():
-    for batch in tqdm(test_loader, desc="Testing"):
-        if batch[0] is None:
-            continue
+    # Compute macro precision/recall/F1
+    val_precision = precision_score(all_labels, all_preds, average='macro', zero_division=0)
+    val_recall = recall_score(all_labels, all_preds, average='macro', zero_division=0)
+    val_f1 = f1_score(all_labels, all_preds, average='macro', zero_division=0)
 
-        images, targets = batch
-        images = list(images)
-        targets = list(targets)
+    # Log validation metrics if writer is not None
+    if writer is not None:
+        writer.add_scalar('Val/Loss_epoch', val_loss, epoch)
+        writer.add_scalar('Val/Accuracy_epoch', val_acc, epoch)
+        writer.add_scalar('Val/Precision_epoch', val_precision, epoch)
+        writer.add_scalar('Val/Recall_epoch', val_recall, epoch)
+        writer.add_scalar('Val/F1_epoch', val_f1, epoch)
 
-        images = torch.stack(images).to(device)
-        labels = [t["labels"][0] for t in targets]
-        labels = torch.tensor(labels, dtype=torch.long).to(device)
+    return val_loss, val_acc, val_precision, val_recall, val_f1
 
-        outputs = classification_model(images)
-        loss = criterion(outputs, labels)
 
-        test_loss += loss.item() * images.size(0)
+def test_model(model, loader, criterion, device):
+    """
+    Tests the model over a test set and returns detailed metrics.
 
-        _, predicted = torch.max(outputs, 1)
-        test_correct += (predicted == labels).sum().item()
-        test_total += labels.size(0)
+    Args:
+        model (nn.Module): The PyTorch model to test.
+        loader (DataLoader): DataLoader for the test set.
+        criterion (nn.Module): The loss function for computing test loss.
+        device (torch.device): Device on which to perform testing.
 
-test_epoch_loss = test_loss / test_total if test_total > 0 else 0.0
-test_epoch_acc = test_correct / test_total if test_total > 0 else 0.0
-print(f"[Test]  Loss: {test_epoch_loss:.4f}, Acc: {test_epoch_acc:.4f}")
+    Returns:
+        dict: {
+            'loss': float,
+            'acc': float,
+            'precision': float,
+            'recall': float,
+            'f1': float
+        }
+    """
+    model.eval()
+    test_loss = 0.0
+    test_correct = 0
+    test_total = 0
+
+    all_test_preds = []
+    all_test_labels = []
+
+    with torch.no_grad():
+        for batch in tqdm(loader, desc="Testing"):
+            if batch[0] is None:
+                continue
+
+            images, targets = batch
+            images = torch.stack(images).to(device)
+            labels = [t["labels"][0] for t in targets]
+            labels = torch.tensor(labels, dtype=torch.long).to(device)
+
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+
+            test_loss += loss.item() * images.size(0)
+
+            _, predicted = torch.max(outputs, 1)
+            test_correct += (predicted == labels).sum().item()
+            test_total += labels.size(0)
+
+            all_test_preds.extend(predicted.cpu().tolist())
+            all_test_labels.extend(labels.cpu().tolist())
+
+    # Compute final metrics
+    test_loss /= test_total if test_total > 0 else 1
+    test_acc = test_correct / test_total if test_total > 0 else 0
+
+    test_precision = precision_score(all_test_labels, all_test_preds, average='macro', zero_division=0)
+    test_recall = recall_score(all_test_labels, all_test_preds, average='macro', zero_division=0)
+    test_f1 = f1_score(all_test_labels, all_test_preds, average='macro', zero_division=0)
+
+    metrics = {
+        'loss': test_loss,
+        'acc': test_acc,
+        'precision': test_precision,
+        'recall': test_recall,
+        'f1': test_f1,
+    }
+    return metrics
+
+################################################################################
+# Main script
+################################################################################
+if __name__ == "__main__":
+    # Choose your device and create the model
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+    model = pw_classification.AI4GAmazonRainforest(device=device)
+    # This model is set for 36 classes by default
+    num_classes = 36
+
+    # Prepare dataset
+    dataset = NACTIAnnotationDataset(
+        image_dir=r"F:\DATASET\NACTI\images\nacti_part0",
+        json_path=r"E:\result\json\detection\part0output.json",
+        csv_path=r"F:\DATASET\NACTI\meta\nacti_metadata_part0.csv",
+        transforms=transform
+    )
+
+    train_size = int(0.8 * len(dataset))
+    val_size = int(0.1 * len(dataset))
+    test_size = len(dataset) - train_size - val_size
+    train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size])
+
+    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, collate_fn=collate_fn_remove_none)
+    val_loader = DataLoader(val_dataset, batch_size=8, shuffle=False, collate_fn=collate_fn_remove_none)
+    test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False, collate_fn=collate_fn_remove_none)
+
+    # Define optimizer & loss
+    model.to(device)
+    optimizer = optim.AdamW(model.parameters(), lr=0.0001)
+    criterion = torch.nn.CrossEntropyLoss()
+
+    # Set up TensorBoard
+    writer = SummaryWriter()
+    num_epochs = 10
+
+    # Global step
+    global_step = 0
+
+    for epoch in range(1, num_epochs + 1):
+        #----------------------#
+        # 1. Train one epoch
+        #----------------------#
+        train_epoch_loss, train_epoch_acc, global_step = train_one_epoch(
+            model, train_loader, optimizer, criterion,
+            device, writer, epoch,
+            global_step_start=global_step
+        )
+        print(f"[Train] Epoch {epoch}/{num_epochs} | Loss: {train_epoch_loss:.4f} | Acc: {train_epoch_acc:.4f}")
+
+        # log epoch-level metrics here
+        writer.add_scalar('Train/Loss_epoch', train_epoch_loss, epoch)
+        writer.add_scalar('Train/Accuracy_epoch', train_epoch_acc, epoch)
+
+        #----------------------#
+        # 2. Validate
+        #----------------------#
+        val_loss, val_acc, val_precision, val_recall, val_f1 = validate(
+            model, val_loader, criterion, device, writer, epoch
+        )
+        print(f"[Val]   Epoch {epoch}/{num_epochs} | "
+              f"Loss: {val_loss:.4f} | Acc: {val_acc:.4f} | "
+              f"Precision: {val_precision:.4f} | Recall: {val_recall:.4f} | F1: {val_f1:.4f}")
+
+    #----------------------#
+    # Test after all epochs
+    #----------------------#
+    test_metrics = test_model(model, test_loader, criterion, device)
+    print(f"[Test]  Loss: {test_metrics['loss']:.4f} | Acc: {test_metrics['acc']:.4f} | "
+          f"Precision: {test_metrics['precision']:.4f} | Recall: {test_metrics['recall']:.4f} | F1: {test_metrics['f1']:.4f}")
+
+    # You can also log test metrics to TensorBoard if desired:
+    writer.add_scalar('Test/Loss', test_metrics['loss'], 0)
+    writer.add_scalar('Test/Accuracy', test_metrics['acc'], 0)
+    writer.add_scalar('Test/Precision', test_metrics['precision'], 0)
+    writer.add_scalar('Test/Recall', test_metrics['recall'], 0)
+    writer.add_scalar('Test/F1', test_metrics['f1'], 0)
+
+    writer.close()
