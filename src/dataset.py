@@ -32,6 +32,7 @@ class NACTIAnnotationDataset(Dataset):
             raise FileNotFoundError(f"Image not found at: {img_path}")
 
         image = Image.open(img_path).convert("RGB")
+        # print(f"Loading idx={idx}, path={img_path}")
 
         # Handle missing or empty bbox
         if not annotation.get('bbox') or len(annotation['bbox']) == 0:
@@ -39,17 +40,24 @@ class NACTIAnnotationDataset(Dataset):
             # just skip this annotation
             return None
 
-        bbox = annotation['bbox'][0]
-        label = annotation.get('category', [0])[0]  # Default to category 0 if missing
+        bboxes = annotation.get('bbox', [])
+        labels = annotation.get('category', [])
+        if len(bboxes) == 0:
+            return None
+        if len(bboxes) != len(labels):
+            return None
 
-        bbox = [bbox[0], bbox[1], bbox[2] - bbox[0], bbox[3] - bbox[1]]
+        xywh_boxes = []
+        for b in bboxes:
+            x1, y1, x2, y2 = b
+            xywh_boxes.append([x1, y1, x2 - x1, y2 - y1])
 
         img_filename = os.path.basename(img_path)
         common_name = self.filename_to_common_name.get(img_filename, "unknown")
 
         target = {
-            "boxes": torch.tensor([bbox], dtype=torch.float32),
-            "labels": torch.tensor([label], dtype=torch.int64),
+            "boxes": torch.tensor(xywh_boxes, dtype=torch.float32),
+            "labels": torch.tensor(labels, dtype=torch.int64),
             "common_name": common_name
         }
 
