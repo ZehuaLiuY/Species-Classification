@@ -358,6 +358,8 @@ if __name__ == "__main__":
     # the model has 36 classes, but the dataset has 46 classes
     # TODO: Update the model to have 46 classes
     num_classes = 36
+    # the dataset has 46 classes, but the model has 36 classes, to fine-tune the model, we need to update the model
+    # to have 46 classes
 
     dataset = NACTIAnnotationDataset(
         image_dir=r"F:\DATASET\NACTI\images\nacti_part0",
