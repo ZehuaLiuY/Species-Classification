@@ -355,6 +355,12 @@ if __name__ == "__main__":
 
     # Initialize the model (this is a classification model from PytorchWildlife)
     model = pw_classification.AI4GAmazonRainforest(device=device)
+
+    # change the models number of classes to 46
+    # model.num_cls = 46
+    num_features = model.net.classifier.in_features
+    # print(f"Number of features in the model: {num_features}") 2048
+    model.net.classifier = torch.nn.Linear(num_features, 46)
     # the model has 36 classes, but the dataset has 46 classes
     # TODO: Update the model to have 46 classes
     num_classes = 36
@@ -433,3 +439,7 @@ if __name__ == "__main__":
     writer.add_scalar('Test/F1', test_metrics['f1'], 0)
 
     writer.close()
+
+    # save the model
+    torch.save(model.state_dict(), "fine_tuned_model_46_classes.pth")
+    print("Model saved.")
