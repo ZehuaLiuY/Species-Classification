@@ -73,7 +73,7 @@ def train_one_epoch(model,
     total = 0
 
     global_step = global_step_start
-
+    w_thres, h_thres = 2, 2
     # Since batch_size=1, loader returns 1 (image, target) per iteration
     for batch_idx, batch in enumerate(tqdm(loader, desc=f"Epoch {epoch} [Train]")):
         if batch[0] is None:
@@ -111,6 +111,10 @@ def train_one_epoch(model,
 
             # Simple boundary check
             if x1_ < 0 or y1_ < 0 or x2_ > img_tensor.shape[2] or y2_ > img_tensor.shape[1]:
+                continue
+
+            # Check for very small boxes
+            if (x2_ - x1_) < w_thres or (y2_ - y1_) < h_thres:
                 continue
 
             # Crop the region from img_tensor
@@ -182,6 +186,7 @@ def validate(model, loader, criterion, device, writer, epoch):
     val_running_loss = 0.0
     val_correct = 0
     val_total = 0
+    w_thres, h_thres = 2, 2
     all_val_preds = []
     all_val_labels = []
 
@@ -216,6 +221,9 @@ def validate(model, loader, criterion, device, writer, epoch):
                 x1_, y1_, x2_, y2_ = map(int, [x1, y1, x2, y2])
 
                 if x1_ < 0 or y1_ < 0 or x2_ > img_tensor.shape[2] or y2_ > img_tensor.shape[1]:
+                    continue
+                # Check for very small boxes
+                if (x2_ - x1_) < w_thres or (y2_ - y1_) < h_thres:
                     continue
 
                 cropped_tensor = img_tensor[:, y1_:y2_, x1_:x2_]
@@ -298,7 +306,7 @@ def test_model(model, loader, criterion, device):
     test_running_loss = 0.0
     test_correct = 0
     test_total = 0
-
+    w_thres, h_thres = 2, 2
     all_test_preds = []
     all_test_labels = []
 
@@ -333,6 +341,10 @@ def test_model(model, loader, criterion, device):
                 x1_, y1_, x2_, y2_ = map(int, [x1, y1, x2, y2])
 
                 if x1_ < 0 or y1_ < 0 or x2_ > img_tensor.shape[2] or y2_ > img_tensor.shape[1]:
+                    continue
+
+                # Check for very small boxes
+                if (x2_ - x1_) < w_thres or (y2_ - y1_) < h_thres:
                     continue
 
                 cropped_tensor = img_tensor[:, y1_:y2_, x1_:x2_]
