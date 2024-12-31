@@ -170,14 +170,20 @@ def validate(model, loader, criterion, device, writer, epoch):
         epoch (int): Current epoch index (for logging).
 
     Returns:
-        (float, float, None, None, None): (val_loss, val_acc, None, None, None)
-            We only implement val_loss and val_acc here. If you need precision/recall/f1,
-            you can store all predictions and labels, then compute them at the end.
+        dict: {
+            'loss': float,
+            'acc': float,
+            'precision': float,
+            'recall': float,
+            'f1': float
+        }
     """
     model.eval()
     val_running_loss = 0.0
     val_correct = 0
     val_total = 0
+    all_val_preds = []
+    all_val_labels = []
 
     with torch.no_grad():
         for batch_idx, batch in enumerate(tqdm(loader, desc=f"Epoch {epoch} [Val]")):
@@ -199,6 +205,9 @@ def validate(model, loader, criterion, device, writer, epoch):
             sample_loss = 0.0
             sample_correct = 0
             sample_total = 0
+
+            sample_preds = []
+            sample_lbls = []
 
             for i in range(boxes.size(0)):
                 x1, y1, w, h = boxes[i]
@@ -222,21 +231,47 @@ def validate(model, loader, criterion, device, writer, epoch):
                 sample_correct += (predicted == single_label).sum().item()
                 sample_total += 1
 
+                sample_preds.append(predicted.item())
+                sample_lbls.append(single_label.item())
+
             if sample_total > 0:
                 sample_loss = sample_loss / sample_total
                 val_running_loss += sample_loss.item()
                 val_correct += sample_correct
                 val_total += sample_total
 
+                all_val_preds.extend(sample_preds)
+                all_val_labels.extend(sample_lbls)
+
     val_loss = val_running_loss / len(loader) if len(loader) > 0 else 0.0
     val_acc = val_correct / val_total if val_total > 0 else 0.0
+
+    val_precision = (precision_score(all_val_labels, all_val_preds,
+                                      average='macro', zero_division=0)
+                      if val_total > 0 else 0)
+    val_recall = (recall_score(all_val_labels, all_val_preds,
+                                average='macro', zero_division=0)
+                   if val_total > 0 else 0)
+    val_f1 = (f1_score(all_val_labels, all_val_preds,
+                        average='macro', zero_division=0)
+               if val_total > 0 else 0)
 
     if writer is not None:
         writer.add_scalar('Val/Loss_epoch', val_loss, epoch)
         writer.add_scalar('Val/Accuracy_epoch', val_acc, epoch)
+        writer.add_scalar('Val/Precision_epoch', val_precision, epoch)
+        writer.add_scalar('Val/Recall_epoch', val_recall, epoch)
+        writer.add_scalar('Val/F1_epoch', val_f1, epoch)
 
-    # Return dummy values for precision/recall/f1 for now
-    return val_loss, val_acc, None, None, None
+    metrics = {
+        'loss': val_loss,
+        'acc': val_acc,
+        'precision': val_precision,
+        'recall': val_recall,
+        'f1': val_f1,
+    }
+
+    return metrics
 
 
 def test_model(model, loader, criterion, device):
@@ -361,11 +396,6 @@ if __name__ == "__main__":
     num_features = model.net.classifier.in_features
     # print(f"Number of features in the model: {num_features}") 2048
     model.net.classifier = torch.nn.Linear(num_features, 46)
-    # the model has 36 classes, but the dataset has 46 classes
-    # TODO: Update the model to have 46 classes
-    num_classes = 36
-    # the dataset has 46 classes, but the model has 36 classes, to fine-tune the model, we need to update the model
-    # to have 46 classes
 
     dataset = NACTIAnnotationDataset(
         image_dir=r"F:\DATASET\NACTI\images\nacti_part0",
@@ -400,7 +430,7 @@ if __name__ == "__main__":
     optimizer = optim.AdamW(model.parameters(), lr=0.0001)
     criterion = torch.nn.CrossEntropyLoss()
     writer = SummaryWriter()
-    num_epochs = 10
+    num_epochs = 5
     global_step = 0
 
     for epoch in range(1, num_epochs + 1):
@@ -417,11 +447,14 @@ if __name__ == "__main__":
         writer.add_scalar('Train/Accuracy_epoch', train_epoch_acc, epoch)
 
         # Validate
-        val_loss, val_acc, _, _, _ = validate(
+        val_metrics = validate(
             model, val_loader, criterion, device, writer, epoch
         )
-        print(f"[Val]   Epoch {epoch}/{num_epochs} | "
-              f"Loss: {val_loss:.4f} | Acc: {val_acc:.4f}")
+        print(f"[Test]  Loss: {val_metrics['loss']:.4f} | "
+              f"Acc: {val_metrics['acc']:.4f} | "
+              f"Precision: {val_metrics['precision']:.4f} | "
+              f"Recall: {val_metrics['recall']:.4f} | "
+              f"F1: {val_metrics['f1']:.4f}")
 
     # Test
     test_metrics = test_model(model, test_loader, criterion, device)
