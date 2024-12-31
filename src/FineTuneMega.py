@@ -6,7 +6,7 @@ from torch.utils.data import random_split, DataLoader
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import precision_score, recall_score, f1_score
-from src.dataset import NACTIAnnotationDataset
+from dataset import NACTIAnnotationDataset
 
 
 transform = transforms.Compose([

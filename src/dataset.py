@@ -78,19 +78,19 @@ class NACTIAnnotationDataset(Dataset):
         return image, target
 
 
-# testing the dataset
-dataset = NACTIAnnotationDataset(
-    image_dir=r"F:\DATASET\NACTI\images\nacti_part0",
-    json_path=r"E:\result\json\detection\part0output.json",
-    csv_path=r"F:\DATASET\NACTI\meta\nacti_metadata_part0.csv"
-)
-
-for idx in range(5):
-    try:
-        image, target = dataset[idx]
-        print(f"Image loaded: {image.size}, Target: {target}")
-    except FileNotFoundError as e:
-        print(e)
+# # testing the dataset
+# dataset = NACTIAnnotationDataset(
+#     image_dir=r"F:\DATASET\NACTI\images\nacti_part0",
+#     json_path=r"E:\result\json\detection\part0output.json",
+#     csv_path=r"F:\DATASET\NACTI\meta\nacti_metadata_part0.csv"
+# )
+#
+# for idx in range(5):
+#     try:
+#         image, target = dataset[idx]
+#         print(f"Image loaded: {image.size}, Target: {target}")
+#     except FileNotFoundError as e:
+#         print(e)
 
 # common name:
 # common_name_to_idx: {
