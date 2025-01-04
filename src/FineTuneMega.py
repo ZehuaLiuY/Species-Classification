@@ -6,15 +6,7 @@ from torch.utils.data import random_split, DataLoader
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import precision_score, recall_score, f1_score
-from src.dataset import NACTIAnnotationDataset
-
-
-transform = transforms.Compose([
-    transforms.Resize((512, 512)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                         std=[0.229, 0.224, 0.225]),
-])
+from dataset import NACTIAnnotationDataset
 
 
 def collate_fn_remove_none(batch):
@@ -44,211 +36,135 @@ def train_one_epoch(model,
                     writer,
                     epoch,
                     global_step_start=0,
-                    log_interval=5):
+                    log_interval=5,
+                    transform=None
+):
     """
-    Train the model for one epoch in a batch_size=1 setting.
-    For each image, we iterate through all bounding boxes, crop the region,
-    feed it to the model, accumulate the loss, and then do a backward + optimizer step.
+    Train for one epoch in a bounding-box-based workflow.
 
     Args:
-        model (nn.Module): The classification model.
-        loader (DataLoader): DataLoader (batch_size=1) for training.
-        optimizer (Optimizer): Optimizer for updating model parameters.
-        criterion (nn.Module): Loss function (e.g., CrossEntropyLoss).
-        device (torch.device): GPU or CPU device to use.
-        writer (SummaryWriter): For TensorBoard logging (optional).
-        epoch (int): Current epoch index (for logging).
-        global_step_start (int): Global step counter at the beginning of this epoch.
-        log_interval (int): Interval (in batches) for logging to TensorBoard.
+        model (nn.Module): The classification model to be trained.
+        loader (DataLoader): Dataloader returning a batch of (PIL.Image, target_dict).
+        optimizer (torch.optim.Optimizer): Optimizer for updating model parameters.
+        criterion (nn.Module): Loss function, e.g., CrossEntropyLoss.
+        device (torch.device): CPU or GPU device.
+        writer (SummaryWriter): TensorBoard writer for logging (optional).
+        epoch (int): Current epoch number (for logging).
+        global_step_start (int): The global step counter at the start of this epoch.
+        log_interval (int): How often (in batches) to log metrics to TensorBoard.
+        transform (callable): A torchvision transform (Resize, Normalize, etc.)
+            applied to each cropped bounding box.
 
     Returns:
-        (float, float, int): (epoch_loss, epoch_acc, new_global_step)
-            - epoch_loss: Average loss across the entire epoch.
-            - epoch_acc: Accuracy across all bounding boxes in the epoch.
-            - new_global_step: The updated global step after this epoch.
+        (float, float, int):
+            - epoch_loss: Average loss over all bounding boxes in this epoch.
+            - epoch_acc: Accuracy over all bounding boxes in this epoch.
+            - global_step: Updated global step after this epoch.
     """
     model.train()
     running_loss = 0.0
+    running_samples = 0
     correct = 0
     total = 0
-
     global_step = global_step_start
 
-    # Since batch_size=1, loader returns 1 (image, target) per iteration
-    for batch_idx, batch in enumerate(tqdm(loader, desc=f"Epoch {epoch} [Train]")):
-        if batch[0] is None:
+    for batch_idx, (images, targets) in enumerate(tqdm(loader, desc=f"Epoch {epoch} [Train]")):
+        if images is None or targets is None:
             continue
 
-        images, targets = batch
-        if not images or not targets or images[0] is None or targets[0] is None:
-            continue
+        all_crops = []
+        all_labels = []
 
-        # We have a single image and its corresponding target
-        img_tensor = images[0].to(device)         # shape: [C, H, W]
-        target_dict = targets[0]
-
-        boxes = target_dict["boxes"].to(device)   # shape: [N, 4] => (x1, y1, w, h)
-        labels = target_dict["labels"].to(device) # shape: [N]
-
-        if boxes.size(0) == 0:
-            # No bounding boxes
-            continue
-
-        optimizer.zero_grad()
-
-        sample_loss = 0.0
-        sample_correct = 0
-        sample_total = 0
-
-        # Loop over each bounding box in this image
-        for i in range(boxes.size(0)):
-            x1, y1, w, h = boxes[i]
-            x2 = x1 + w
-            y2 = y1 + h
-
-            # Convert to int for slicing
-            x1_, y1_, x2_, y2_ = map(int, [x1, y1, x2, y2])
-
-            # Simple boundary check
-            if x1_ < 0 or y1_ < 0 or x2_ > img_tensor.shape[2] or y2_ > img_tensor.shape[1]:
+        for i in range(len(images)):
+            if images[i] is None or targets[i] is None:
                 continue
 
-            # Crop the region from img_tensor
-            cropped_tensor = img_tensor[:, y1_:y2_, x1_:x2_]
+            # 'images[i]' is a PIL.Image if the dataset does not apply transforms
+            pil_img = images[i]
+            target_dict = targets[i]
 
-            cropped_tensor = cropped_tensor.unsqueeze(0)
-            single_label = labels[i].unsqueeze(0)
+            boxes = target_dict["boxes"]    # shape: [N, 4] => [x, y, w, h]
+            labels = target_dict["labels"]  # shape: [N]
 
-            # Forward pass
-            outputs = model(cropped_tensor)
-            loss = criterion(outputs, single_label)
-            sample_loss += loss
+            if boxes.size(0) == 0:
+                continue
 
-            # Accuracy
-            _, predicted = torch.max(outputs, 1)
-            sample_correct += (predicted == single_label).sum().item()
-            sample_total += 1
+            # Process each bounding box
+            for j in range(boxes.size(0)):
+                x1, y1, w, h = boxes[j]
+                x2 = x1 + w
+                y2 = y1 + h
 
-        if sample_total > 0:
-            # Average loss across the bounding boxes in this single image
-            sample_loss = sample_loss / sample_total
+                x1_, y1_, x2_, y2_ = map(int, [x1, y1, x2, y2])
+                # Skip invalid or out-of-bounds boxes
+                if x1_ < 0 or y1_ < 0 or x2_ <= x1_ or y2_ <= y1_:
+                    continue
 
-            sample_loss.backward()
-            optimizer.step()
+                # 1) Crop the bounding-box region
+                cropped_pil = pil_img.crop((x1_, y1_, x2_, y2_))
 
-            running_loss += sample_loss.item()
-            correct += sample_correct
-            total += sample_total
+                # 2) Apply the global transform (e.g. Resize, Normalize)
+                if transform:
+                    cropped_tensor = transform(cropped_pil).to(device)
+                else:
+                    # Minimal fallback: just convert to tensor
+                    cropped_tensor = transforms.ToTensor()(cropped_pil).to(device)
 
-            # Logging
-            if writer is not None and ((batch_idx + 1) % log_interval == 0):
-                batch_acc = sample_correct / sample_total
-                writer.add_scalar('Train/Loss_batch', sample_loss.item(), global_step)
-                writer.add_scalar('Train/Accuracy_batch', batch_acc, global_step)
+                all_crops.append(cropped_tensor)
+                all_labels.append(labels[j].item())
+
+        if len(all_crops) == 0:
+            continue
+
+        # Stack into one big batch: [M, C, H, W]
+        batch_crops = torch.stack(all_crops, dim=0)
+        batch_labels = torch.tensor(all_labels, dtype=torch.long, device=device)
+
+        # Forward & backward
+        optimizer.zero_grad()
+        outputs = model(batch_crops)  # [M, num_classes]
+        loss = criterion(outputs, batch_labels)
+
+        batch_loss = loss.item()
+        batch_num = batch_labels.size(0)
+        loss.backward()
+        optimizer.step()
+
+        # Track loss and accuracy
+        running_loss += batch_loss
+        running_samples += batch_num
+
+        _, predicted = torch.max(outputs, dim=1)
+        correct += (predicted == batch_labels).sum().item()
+        total += batch_labels.size(0)
+
+        # Log batch metrics
+        if writer is not None and ((batch_idx + 1) % log_interval == 0):
+            batch_acc = (predicted == batch_labels).float().mean().item()
+            writer.add_scalar('Train/Loss_batch', batch_loss, global_step)
+            writer.add_scalar('Train/Accuracy_batch', batch_acc, global_step)
 
         global_step += 1
 
-    # Compute epoch-level metrics
-    # epoch_loss can be averaged per image (len(loader)) or per box (total)
-    epoch_loss = running_loss / len(loader) if len(loader) > 0 else 0.0
-    epoch_acc = correct / total if total > 0 else 0.0
-
+    # Compute epoch metrics
+    epoch_loss = running_loss / max(running_samples, 1)
+    epoch_acc = correct / max(total, 1)
     return epoch_loss, epoch_acc, global_step
 
 
-def validate(model, loader, criterion, device, writer, epoch):
+def validate(model, loader, criterion, device, writer, epoch, transform=None):
     """
     Validation step for batch_size=1, bounding-box-level classification.
     No backpropagation, just forward passes to evaluate loss and accuracy.
 
     Args:
-        model (nn.Module): The classification model.
-        loader (DataLoader): DataLoader (batch_size=1) for validation.
+        model (nn.Module): The classification model to validate.
+        loader (DataLoader): Dataloader returning a batch of (PIL.Image, target_dict).
         criterion (nn.Module): Loss function.
         device (torch.device): CPU or GPU device.
-        writer (SummaryWriter): For TensorBoard logging (optional).
-        epoch (int): Current epoch index (for logging).
-
-    Returns:
-        (float, float, None, None, None): (val_loss, val_acc, None, None, None)
-            We only implement val_loss and val_acc here. If you need precision/recall/f1,
-            you can store all predictions and labels, then compute them at the end.
-    """
-    model.eval()
-    val_running_loss = 0.0
-    val_correct = 0
-    val_total = 0
-
-    with torch.no_grad():
-        for batch_idx, batch in enumerate(tqdm(loader, desc=f"Epoch {epoch} [Val]")):
-            if batch[0] is None:
-                continue
-
-            images, targets = batch
-            if not images or not targets or images[0] is None or targets[0] is None:
-                continue
-
-            img_tensor = images[0].to(device)
-            target_dict = targets[0]
-            boxes = target_dict["boxes"].to(device)
-            labels = target_dict["labels"].to(device)
-
-            if boxes.size(0) == 0:
-                continue
-
-            sample_loss = 0.0
-            sample_correct = 0
-            sample_total = 0
-
-            for i in range(boxes.size(0)):
-                x1, y1, w, h = boxes[i]
-                x2 = x1 + w
-                y2 = y1 + h
-                x1_, y1_, x2_, y2_ = map(int, [x1, y1, x2, y2])
-
-                if x1_ < 0 or y1_ < 0 or x2_ > img_tensor.shape[2] or y2_ > img_tensor.shape[1]:
-                    continue
-
-                cropped_tensor = img_tensor[:, y1_:y2_, x1_:x2_]
-                cropped_tensor = cropped_tensor.unsqueeze(0)
-                single_label = labels[i].unsqueeze(0)
-
-                outputs = model(cropped_tensor)
-                loss = criterion(outputs, single_label)
-
-                sample_loss += loss
-
-                _, predicted = torch.max(outputs, 1)
-                sample_correct += (predicted == single_label).sum().item()
-                sample_total += 1
-
-            if sample_total > 0:
-                sample_loss = sample_loss / sample_total
-                val_running_loss += sample_loss.item()
-                val_correct += sample_correct
-                val_total += sample_total
-
-    val_loss = val_running_loss / len(loader) if len(loader) > 0 else 0.0
-    val_acc = val_correct / val_total if val_total > 0 else 0.0
-
-    if writer is not None:
-        writer.add_scalar('Val/Loss_epoch', val_loss, epoch)
-        writer.add_scalar('Val/Accuracy_epoch', val_acc, epoch)
-
-    # Return dummy values for precision/recall/f1 for now
-    return val_loss, val_acc, None, None, None
-
-
-def test_model(model, loader, criterion, device):
-    """
-    Test the model (batch_size=1, bounding-box-level classification).
-    Similar to validation, but we'll store predictions/labels to compute precision, recall, and F1.
-
-    Args:
-        model (nn.Module): Classification model.
-        loader (DataLoader): DataLoader (batch_size=1) for testing.
-        criterion (nn.Module): Loss function.
-        device (torch.device): CPU or GPU device.
+        writer (SummaryWriter): TensorBoard writer for logging (optional).
+        epoch (int): Current epoch number (for logging).
+        transform (callable): The global transform for bounding box crops.
 
     Returns:
         dict: {
@@ -260,93 +176,96 @@ def test_model(model, loader, criterion, device):
         }
     """
     model.eval()
-    test_running_loss = 0.0
-    test_correct = 0
-    test_total = 0
+    val_running_loss = 0.0
+    val_running_total = 0
+    val_correct = 0
+    val_total = 0
 
-    all_test_preds = []
-    all_test_labels = []
+    all_val_preds = []
+    all_val_labels = []
 
     with torch.no_grad():
-        for batch in tqdm(loader, desc="Testing"):
-            if batch[0] is None:
+        for batch_idx, (images, targets) in enumerate(tqdm(loader, desc=f"Epoch {epoch} [Val]")):
+            if images is None or targets is None:
                 continue
 
-            images, targets = batch
-            if not images or not targets or images[0] is None or targets[0] is None:
-                continue
+            all_crops = []
+            all_labels = []
 
-            img_tensor = images[0].to(device)
-            target_dict = targets[0]
-            boxes = target_dict["boxes"].to(device)
-            labels = target_dict["labels"].to(device)
-
-            if boxes.size(0) == 0:
-                continue
-
-            sample_loss = 0.0
-            sample_correct = 0
-            sample_total = 0
-
-            sample_preds = []
-            sample_lbls = []
-
-            for i in range(boxes.size(0)):
-                x1, y1, w, h = boxes[i]
-                x2 = x1 + w
-                y2 = y1 + h
-                x1_, y1_, x2_, y2_ = map(int, [x1, y1, x2, y2])
-
-                if x1_ < 0 or y1_ < 0 or x2_ > img_tensor.shape[2] or y2_ > img_tensor.shape[1]:
+            for i in range(len(images)):
+                if images[i] is None or targets[i] is None:
                     continue
 
-                cropped_tensor = img_tensor[:, y1_:y2_, x1_:x2_]
-                cropped_tensor = cropped_tensor.unsqueeze(0)
-                single_label = labels[i].unsqueeze(0)
+                pil_img = images[i]
+                target_dict = targets[i]
+                boxes = target_dict["boxes"]
+                labels = target_dict["labels"]
 
-                outputs = model(cropped_tensor)
-                loss = criterion(outputs, single_label)
-                sample_loss += loss
+                if boxes.size(0) == 0:
+                    continue
 
-                _, predicted = torch.max(outputs, 1)
-                sample_correct += (predicted == single_label).sum().item()
-                sample_total += 1
+                for j in range(boxes.size(0)):
+                    x1, y1, w, h = boxes[j]
+                    x2 = x1 + w
+                    y2 = y1 + h
 
-                sample_preds.append(predicted.item())
-                sample_lbls.append(single_label.item())
+                    x1_, y1_, x2_, y2_ = map(int, [x1, y1, x2, y2])
+                    if x1_ < 0 or y1_ < 0 or x2_ <= x1_ or y2_ <= y1_:
+                        continue
 
-            if sample_total > 0:
-                sample_loss = sample_loss / sample_total
-                test_running_loss += sample_loss.item()
-                test_correct += sample_correct
-                test_total += sample_total
+                    cropped_pil = pil_img.crop((x1_, y1_, x2_, y2_))
+                    if transform:
+                        cropped_tensor = transform(cropped_pil).to(device)
+                    else:
+                        cropped_tensor = transforms.ToTensor()(cropped_pil).to(device)
 
-                all_test_preds.extend(sample_preds)
-                all_test_labels.extend(sample_lbls)
+                    all_crops.append(cropped_tensor)
+                    all_labels.append(labels[j].item())
 
-    # Final metrics
-    test_loss = test_running_loss / len(loader) if len(loader) > 0 else 0.0
-    test_acc = test_correct / test_total if test_total > 0 else 0.0
+            if len(all_crops) == 0:
+                continue
 
-    test_precision = (precision_score(all_test_labels, all_test_preds,
-                                      average='macro', zero_division=0)
-                      if test_total > 0 else 0)
-    test_recall = (recall_score(all_test_labels, all_test_preds,
-                                average='macro', zero_division=0)
-                   if test_total > 0 else 0)
-    test_f1 = (f1_score(all_test_labels, all_test_preds,
-                        average='macro', zero_division=0)
-               if test_total > 0 else 0)
+            batch_crops = torch.stack(all_crops, dim=0)
+            batch_labels = torch.tensor(all_labels, dtype=torch.long, device=device)
+
+            outputs = model(batch_crops)
+            loss = criterion(outputs, batch_labels)
+
+            batch_loss = loss.item()
+            batch_num = batch_labels.size(0)
+
+            val_running_loss += batch_loss
+            val_running_total += batch_num
+
+            _, predicted = torch.max(outputs, dim=1)
+            val_correct += (predicted == batch_labels).sum().item()
+            val_total += batch_labels.size(0)
+
+            all_val_preds.extend(predicted.cpu().tolist())
+            all_val_labels.extend(batch_labels.cpu().tolist())
+
+    val_loss = val_running_loss / max(val_running_total, 1)
+    val_acc = val_correct / max(val_total, 1)
+
+    val_precision = precision_score(all_val_labels, all_val_preds, average='macro', zero_division=0)
+    val_recall = recall_score(all_val_labels, all_val_preds, average='macro', zero_division=0)
+    val_f1 = f1_score(all_val_labels, all_val_preds, average='macro', zero_division=0)
+
+    if writer is not None:
+        writer.add_scalar('Val/Loss_epoch', val_loss, epoch)
+        writer.add_scalar('Val/Accuracy_epoch', val_acc, epoch)
+        writer.add_scalar('Val/Precision_epoch', val_precision, epoch)
+        writer.add_scalar('Val/Recall_epoch', val_recall, epoch)
+        writer.add_scalar('Val/F1_epoch', val_f1, epoch)
 
     metrics = {
-        'loss': test_loss,
-        'acc': test_acc,
-        'precision': test_precision,
-        'recall': test_recall,
-        'f1': test_f1,
+        'loss': val_loss,
+        'acc': val_acc,
+        'precision': val_precision,
+        'recall': val_recall,
+        'f1': val_f1,
     }
     return metrics
-
 
 if __name__ == "__main__":
     # Select device
@@ -355,15 +274,31 @@ if __name__ == "__main__":
 
     # Initialize the model (this is a classification model from PytorchWildlife)
     model = pw_classification.AI4GAmazonRainforest(device=device)
-    # the model has 36 classes, but the dataset has 46 classes
-    # TODO: Update the model to have 46 classes
-    num_classes = 36
+
+    transform = transforms.Compose([
+        transforms.Resize((256, 256)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                             std=[0.229, 0.224, 0.225]),
+    ])
+
+    # change the models number of classes to 46
+    # model.num_cls = 46
+    num_features = model.net.classifier.in_features
+    # print(f"Number of features in the model: {num_features}") 2048
+    model.net.classifier = torch.nn.Linear(num_features, 46)
+    # model.net.classifier = torch.nn.Sequential(
+    #     torch.nn.Linear(num_features, 512),
+    #     torch.nn.ReLU(),
+    #     torch.nn.Dropout(0.5),
+    #     torch.nn.Linear(512, 46)
+    # )
 
     dataset = NACTIAnnotationDataset(
         image_dir=r"F:\DATASET\NACTI\images\nacti_part0",
         json_path=r"E:\result\json\detection\part0output.json",
         csv_path=r"F:\DATASET\NACTI\meta\nacti_metadata_part0.csv",
-        transforms=transform  # Resizing each image to 512x512
+        # transforms=transform  # Resizing each image to 512x512
     )
 
     # Split dataset into train, val, test
@@ -376,21 +311,21 @@ if __name__ == "__main__":
 
     # Set DataLoader with batch_size=1
     train_loader = DataLoader(train_dataset,
-                              batch_size=1,
+                              batch_size=8,
                               shuffle=True,
                               collate_fn=collate_fn_remove_none)
     val_loader = DataLoader(val_dataset,
-                            batch_size=1,
+                            batch_size=8,
                             shuffle=False,
                             collate_fn=collate_fn_remove_none)
     test_loader = DataLoader(test_dataset,
-                             batch_size=1,
+                             batch_size=8,
                              shuffle=False,
                              collate_fn=collate_fn_remove_none)
 
     model.to(device)
     optimizer = optim.AdamW(model.parameters(), lr=0.0001)
-    criterion = torch.nn.CrossEntropyLoss()
+    criterion = torch.nn.CrossEntropyLoss() # default mode is mean
     writer = SummaryWriter()
     num_epochs = 10
     global_step = 0
@@ -400,7 +335,8 @@ if __name__ == "__main__":
         train_epoch_loss, train_epoch_acc, global_step = train_one_epoch(
             model, train_loader, optimizer, criterion,
             device, writer, epoch,
-            global_step_start=global_step
+            global_step_start=global_step,
+            transform=transform
         )
         print(f"[Train] Epoch {epoch}/{num_epochs} | "
               f"Loss: {train_epoch_loss:.4f} | Acc: {train_epoch_acc:.4f}")
@@ -409,25 +345,15 @@ if __name__ == "__main__":
         writer.add_scalar('Train/Accuracy_epoch', train_epoch_acc, epoch)
 
         # Validate
-        val_loss, val_acc, _, _, _ = validate(
-            model, val_loader, criterion, device, writer, epoch
+        val_metrics = validate(
+            model, val_loader, criterion, device, writer, epoch, transform=transform
         )
-        print(f"[Val]   Epoch {epoch}/{num_epochs} | "
-              f"Loss: {val_loss:.4f} | Acc: {val_acc:.4f}")
+        print(f"[Validation]  Loss: {val_metrics['loss']:.4f} | "
+              f"Acc: {val_metrics['acc']:.4f} | "
+              f"Precision: {val_metrics['precision']:.4f} | "
+              f"Recall: {val_metrics['recall']:.4f} | "
+              f"F1: {val_metrics['f1']:.4f}")
 
-    # Test
-    test_metrics = test_model(model, test_loader, criterion, device)
-    print(f"[Test]  Loss: {test_metrics['loss']:.4f} | "
-          f"Acc: {test_metrics['acc']:.4f} | "
-          f"Precision: {test_metrics['precision']:.4f} | "
-          f"Recall: {test_metrics['recall']:.4f} | "
-          f"F1: {test_metrics['f1']:.4f}")
-
-    # log test metrics to TensorBoard
-    writer.add_scalar('Test/Loss', test_metrics['loss'], 0)
-    writer.add_scalar('Test/Accuracy', test_metrics['acc'], 0)
-    writer.add_scalar('Test/Precision', test_metrics['precision'], 0)
-    writer.add_scalar('Test/Recall', test_metrics['recall'], 0)
-    writer.add_scalar('Test/F1', test_metrics['f1'], 0)
-
-    writer.close()
+    # save the model
+    torch.save(model.state_dict(), "fine_tuned_model_46_classes.pth")
+    print("Model saved.")

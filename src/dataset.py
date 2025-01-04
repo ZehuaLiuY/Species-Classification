@@ -23,7 +23,7 @@ class NACTIAnnotationDataset(Dataset):
         # get all common names and mapping to int
         all_common_names = sorted(set(self.csv_data['common_name']))
         self.common_name_to_idx = {cn: i for i, cn in enumerate(all_common_names)}
-        print("common_name_to_idx:", self.common_name_to_idx)
+        # print("common_name_to_idx:", self.common_name_to_idx)
 
     def __len__(self):
         return len(self.annotations)
@@ -91,3 +91,53 @@ class NACTIAnnotationDataset(Dataset):
 #         print(f"Image loaded: {image.size}, Target: {target}")
 #     except FileNotFoundError as e:
 #         print(e)
+
+# common name:
+# common_name_to_idx: {
+# 'american black bear': 0,
+# 'american marten': 1,
+# 'american red squirrel': 2,
+# 'black-tailed jackrabbit': 3,
+# 'bobcat': 4,
+# 'california ground squirrel': 5,
+# 'california quail': 6,
+# 'cougar': 7,
+# 'coyote': 8,
+# 'dark-eyed junco': 9,
+# 'domestic cow': 10,
+# 'domestic dog': 11,
+# 'dusky grouse': 12,
+# 'eastern gray squirrel': 13,
+# 'elk': 14,
+# 'ermine': 15,
+# 'european badger': 16,
+# 'gray fox': 17,
+# 'gray jay': 18,
+# 'horse': 19,
+# 'house wren': 20,
+# 'long-tailed weasel': 21,
+# 'moose': 22,
+# 'mule deer': 23,
+# 'north american porcupine': 24,
+# 'raccoon': 25,
+# 'red deer': 26,
+# 'red fox': 27,
+# 'snowshoe hare': 28,
+# "steller's jay": 29,
+# 'striped skunk': 30,
+# 'unidentified accipitrid': 31,
+# 'unidentified bird': 32,
+# 'unidentified chipmunk': 33,
+# 'unidentified corvus': 34,
+# 'unidentified deer': 35,
+# 'unidentified deer mouse': 36,
+# 'unidentified mouse': 37,
+# 'unidentified pack rat': 38,
+# 'unidentified pocket gopher': 39,
+# 'unidentified rabbit': 40,
+# 'vehicle': 41,
+# 'virginia opossum': 42,
+# 'wild boar': 43,
+# 'wild turkey': 44,
+# 'yellow-bellied marmot': 45
+# }
