@@ -63,6 +63,7 @@ def train_one_epoch(model,
     """
     model.train()
     running_loss = 0.0
+    running_samples = 0
     correct = 0
     total = 0
     global_step = global_step_start
@@ -123,18 +124,22 @@ def train_one_epoch(model,
         optimizer.zero_grad()
         outputs = model(batch_crops)  # [M, num_classes]
         loss = criterion(outputs, batch_labels)
+
+        batch_loss = loss.item()
+        batch_num = batch_labels.size(0)
         loss.backward()
         optimizer.step()
 
         # Track loss and accuracy
-        running_loss += loss.item()
+        running_loss += batch_loss
+        running_samples += batch_num
+
         _, predicted = torch.max(outputs, dim=1)
         correct += (predicted == batch_labels).sum().item()
         total += batch_labels.size(0)
 
         # Log batch metrics
         if writer is not None and ((batch_idx + 1) % log_interval == 0):
-            batch_loss = loss.item()
             batch_acc = (predicted == batch_labels).float().mean().item()
             writer.add_scalar('Train/Loss_batch', batch_loss, global_step)
             writer.add_scalar('Train/Accuracy_batch', batch_acc, global_step)
@@ -142,7 +147,7 @@ def train_one_epoch(model,
         global_step += 1
 
     # Compute epoch metrics
-    epoch_loss = running_loss / max(len(loader), 1)
+    epoch_loss = running_loss / max(running_samples, 1)
     epoch_acc = correct / max(total, 1)
     return epoch_loss, epoch_acc, global_step
 
@@ -172,6 +177,7 @@ def validate(model, loader, criterion, device, writer, epoch, transform=None):
     """
     model.eval()
     val_running_loss = 0.0
+    val_running_total = 0
     val_correct = 0
     val_total = 0
 
@@ -225,7 +231,12 @@ def validate(model, loader, criterion, device, writer, epoch, transform=None):
             outputs = model(batch_crops)
             loss = criterion(outputs, batch_labels)
 
-            val_running_loss += loss.item()
+            batch_loss = loss.item()
+            batch_num = batch_labels.size(0)
+
+            val_running_loss += batch_loss
+            val_running_total += batch_num
+
             _, predicted = torch.max(outputs, dim=1)
             val_correct += (predicted == batch_labels).sum().item()
             val_total += batch_labels.size(0)
@@ -233,7 +244,7 @@ def validate(model, loader, criterion, device, writer, epoch, transform=None):
             all_val_preds.extend(predicted.cpu().tolist())
             all_val_labels.extend(batch_labels.cpu().tolist())
 
-    val_loss = val_running_loss / max(len(loader), 1)
+    val_loss = val_running_loss / max(val_running_total, 1)
     val_acc = val_correct / max(val_total, 1)
 
     val_precision = precision_score(all_val_labels, all_val_preds, average='macro', zero_division=0)
@@ -314,7 +325,7 @@ if __name__ == "__main__":
 
     model.to(device)
     optimizer = optim.AdamW(model.parameters(), lr=0.0001)
-    criterion = torch.nn.CrossEntropyLoss()
+    criterion = torch.nn.CrossEntropyLoss() # default mode is mean
     writer = SummaryWriter()
     num_epochs = 10
     global_step = 0

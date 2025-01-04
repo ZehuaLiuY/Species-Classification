@@ -60,6 +60,7 @@ def test_model(model, loader, criterion, device, transform=None):
     """
     model.eval()
     test_running_loss = 0.0
+    test_running_total = 0
     test_correct = 0
     test_total = 0
 
@@ -112,8 +113,11 @@ def test_model(model, loader, criterion, device, transform=None):
 
             outputs = model(batch_crops)
             loss = criterion(outputs, batch_labels)
+            batch_loss = loss.item()
+            batch_num = batch_labels.size(0)
 
-            test_running_loss += loss.item()
+            test_running_loss += batch_loss
+            test_running_total += batch_num
             _, predicted = torch.max(outputs, dim=1)
             test_correct += (predicted == batch_labels).sum().item()
             test_total += batch_labels.size(0)
