@@ -30,7 +30,10 @@ class NACTIAnnotationDataset(Dataset):
 
     def __getitem__(self, idx):
         annotation = self.annotations[idx]
-        img_path = annotation['img_id']
+        # img_path = annotation['img_id']
+        img_filename = os.path.basename(annotation['img_id'])
+        img_path = os.path.join(self.image_dir, img_filename)
+        print(f"Loading image: {img_path}")
 
         if not os.path.exists(img_path):
             raise FileNotFoundError(f"Image not found at: {img_path}")
@@ -78,19 +81,19 @@ class NACTIAnnotationDataset(Dataset):
         return image, target
 
 
-# # testing the dataset
-# dataset = NACTIAnnotationDataset(
-#     image_dir=r"F:\DATASET\NACTI\images\nacti_part0",
-#     json_path=r"E:\result\json\detection\part0output.json",
-#     csv_path=r"F:\DATASET\NACTI\meta\nacti_metadata_part0.csv"
-# )
-#
-# for idx in range(5):
-#     try:
-#         image, target = dataset[idx]
-#         print(f"Image loaded: {image.size}, Target: {target}")
-#     except FileNotFoundError as e:
-#         print(e)
+# testing the dataset
+dataset = NACTIAnnotationDataset(
+    image_dir=r"F:\DATASET\NACTI\images\nacti_part0",
+    json_path=r"E:\result\json\detection\part0output.json",
+    csv_path=r"F:\DATASET\NACTI\meta\nacti_metadata_part0.csv"
+)
+
+for idx in range(5):
+    try:
+        image, target = dataset[idx]
+        print(f"Image loaded: {image.size}, Target: {target}")
+    except FileNotFoundError as e:
+        print(e)
 
 # common name:
 # common_name_to_idx: {
