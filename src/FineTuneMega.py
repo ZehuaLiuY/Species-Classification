@@ -330,6 +330,9 @@ if __name__ == "__main__":
     num_epochs = 10
     global_step = 0
 
+    # best f1 for saving the model
+    best_f1 = 0
+
     for epoch in range(1, num_epochs + 1):
         # Train
         train_epoch_loss, train_epoch_acc, global_step = train_one_epoch(
@@ -354,6 +357,12 @@ if __name__ == "__main__":
               f"Recall: {val_metrics['recall']:.4f} | "
               f"F1: {val_metrics['f1']:.4f}")
 
-    # save the model
-    torch.save(model.state_dict(), "fine_tuned_model_46_classes.pth")
+        # save the best model
+        if val_metrics['f1'] > best_f1:
+            best_f1 = val_metrics['f1']
+            torch.save(model.state_dict(), "best_fine_tuned_model_46_classes.pth")
+            print(f"Best model saved with F1: {best_f1:.4f}, in Epoch: {epoch}")
+
+    # save final the model
+    torch.save(model.state_dict(), "final_fine_tuned_model_46_classes.pth")
     print("Model saved.")
