@@ -149,11 +149,15 @@ def main(args):
 
     # load the fine-tuned classification model
     model = pw_classification.AI4GAmazonRainforest(device=device)
-    checkpoint = torch.load(args.model_path, weights_only=True, map_location=device)
+
+    num_features = model.net.classifier.in_features
+    model.net.classifier = torch.nn.Linear(num_features, 46)
+
+    checkpoint = torch.load(args.model_path, map_location=device)
     state_dict = checkpoint.get("model", checkpoint)
     state_dict = {k: v for k, v in state_dict.items() if k in model.state_dict()}
-
     model.load_state_dict(state_dict, strict=False)
+    model = model.to(device)
 
     transform = transforms.Compose([
         transforms.Resize((256, 256)),
@@ -166,7 +170,6 @@ def main(args):
         image_dir=r"F:\DATASET\NACTI\images\nacti_part0",
         json_path=r"E:\result\json\detection\part0output.json",
         csv_path=r"F:\DATASET\NACTI\meta\nacti_metadata_part0.csv",
-        # transforms=transform  # Resizing each image to 512x512
     )
 
     # Split dataset into train, val, test
@@ -177,10 +180,12 @@ def main(args):
         dataset, [train_size, val_size, test_size]
     )
 
-    test_loader = DataLoader(test_dataset,
-                             batch_size=8,
-                             shuffle=False,
-                             collate_fn=collate_fn_remove_none)
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=8,
+        shuffle=False,
+        collate_fn=collate_fn_remove_none
+    )
 
     writer = SummaryWriter()
     criterion = torch.nn.CrossEntropyLoss()

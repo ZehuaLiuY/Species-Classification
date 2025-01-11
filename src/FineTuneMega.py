@@ -360,9 +360,9 @@ if __name__ == "__main__":
         # save the best model
         if val_metrics['f1'] > best_f1:
             best_f1 = val_metrics['f1']
-            torch.save(model.state_dict(), "best_fine_tuned_model_46_classes.pth")
+            torch.save(model.state_dict(), "best_model.pth")
             print(f"Best model saved with F1: {best_f1:.4f}, in Epoch: {epoch}")
 
     # save final the model
-    torch.save(model.state_dict(), "final_fine_tuned_model_46_classes.pth")
+    torch.save(model.state_dict(), "final_model.pth")
     print("Model saved.")
