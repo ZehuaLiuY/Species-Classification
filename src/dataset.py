@@ -25,48 +25,54 @@ class NACTIAnnotationDataset(Dataset):
         self.common_name_to_idx = {cn: i for i, cn in enumerate(all_common_names)}
         # print("common_name_to_idx:", self.common_name_to_idx)
 
+        # filter the invalid annotations
+        valid_annotations = []
+        for annotation in self.annotations:
+            # check the image
+            img_filename = os.path.basename(annotation['img_id'].replace('\\', '/'))
+            img_path = os.path.join(self.image_dir, img_filename)
+            if not img_path or not os.path.exists(img_path):
+                continue
+
+            # check the common name
+            common_name = self.filename_to_common_name.get(img_filename, "unknown")
+            if common_name == "unknown" or common_name not in self.common_name_to_idx:
+                continue
+            annotation['common_name'] = common_name
+            # check the bbox
+            if not annotation.get('bbox') or len(annotation['bbox']) == 0:
+                continue
+            bboxes = annotation['bbox']
+
+            # check the valid bbox
+            xywh_boxes = []
+            for b in bboxes:
+                x1, y1, x2, y2 = b
+                if x2 - x1 <= 0 or y2 - y1 <= 0:
+                    continue
+                xywh_boxes.append([x1, y1, x2 - x1, y2 - y1])
+            if len(xywh_boxes) == 0:
+                continue
+            annotation['xywh_boxes'] = xywh_boxes
+            valid_annotations.append(annotation)
+
+            self.annotations = valid_annotations
+
     def __len__(self):
         return len(self.annotations)
 
     def __getitem__(self, idx):
         annotation = self.annotations[idx]
-        # img_path = annotation['img_id']
-        img_filename = os.path.basename(annotation['img_id'])
+        img_filename = os.path.basename(annotation['img_id'].replace('\\', '/'))
         img_path = os.path.join(self.image_dir, img_filename)
-        # print(f"Loading image: {img_path}")
-
-        if not os.path.exists(img_path):
-            raise FileNotFoundError(f"Image not found at: {img_path}")
 
         image = Image.open(img_path).convert("RGB")
 
-        # using filename to get common_name
-        img_filename = os.path.basename(img_path)
-        common_name = self.filename_to_common_name.get(img_filename, "unknown")
-        #
-        if common_name == "unknown" or common_name not in self.common_name_to_idx:
-            return None
-
-        # get mapping the common_name to int
+        common_name = annotation['common_name']
         label_idx = self.common_name_to_idx[common_name]
 
-        if not annotation.get('bbox') or len(annotation['bbox']) == 0:
-            return None
-        bboxes = annotation.get('bbox', [])
-        if len(bboxes) == 0:
-            return None
-
-        xywh_boxes = []
-        for b in bboxes:
-            x1, y1, x2, y2 = b
-            if x2 - x1 <= 0 or y2 - y1 <= 0:
-                continue
-            xywh_boxes.append([x1, y1, x2 - x1, y2 - y1])
-
-        if len(xywh_boxes) == 0:
-            return None
-
-        labels = [label_idx] * len(xywh_boxes)
+        xywh_boxes = annotation['xywh_boxes']
+        labels = [label_idx]*len(xywh_boxes)
 
         target = {
             "boxes": torch.tensor(xywh_boxes, dtype=torch.float32),
@@ -81,19 +87,22 @@ class NACTIAnnotationDataset(Dataset):
         return image, target
 
 
-# # testing the dataset
-# dataset = NACTIAnnotationDataset(
-#     image_dir=r"F:\DATASET\NACTI\images\nacti_part0",
-#     json_path=r"E:\result\json\detection\part0output.json",
-#     csv_path=r"F:\DATASET\NACTI\meta\nacti_metadata_part0.csv"
-# )
-#
-# for idx in range(5):
-#     try:
-#         image, target = dataset[idx]
-#         print(f"Image loaded: {image.size}, Target: {target}")
-#     except FileNotFoundError as e:
-#         print(e)
+# testing the dataset
+dataset = NACTIAnnotationDataset(
+    image_dir=r"F:\DATASET\NACTI\images\nacti_part0",
+    json_path=r"E:\result\json\detection\part0output.json",
+    csv_path=r"F:\DATASET\NACTI\meta\nacti_metadata_part0.csv"
+)
+
+# check the length of the dataset
+print("Dataset length:", len(dataset))
+
+for idx in range(5):
+    try:
+        image, target = dataset[idx]
+        print(f"Image loaded: {image.size}, Target: {target}")
+    except FileNotFoundError as e:
+        print(e)
 
 # common name:
 # common_name_to_idx: {
