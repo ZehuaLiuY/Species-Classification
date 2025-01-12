@@ -4,6 +4,7 @@ import pandas as pd
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
+from torchvision import transforms
 
 class NACTIAnnotationDataset(Dataset):
     def __init__(self, image_dir, json_path, csv_path, transforms=None):
@@ -87,22 +88,22 @@ class NACTIAnnotationDataset(Dataset):
         return image, target
 
 
-# testing the dataset
-dataset = NACTIAnnotationDataset(
-    image_dir=r"F:\DATASET\NACTI\images\nacti_part0",
-    json_path=r"E:\result\json\detection\part0output.json",
-    csv_path=r"F:\DATASET\NACTI\meta\nacti_metadata_part0.csv"
-)
-
-# check the length of the dataset
-print("Dataset length:", len(dataset))
-
-for idx in range(5):
-    try:
-        image, target = dataset[idx]
-        print(f"Image loaded: {image.size}, Target: {target}")
-    except FileNotFoundError as e:
-        print(e)
+# # testing the dataset
+# dataset = NACTIAnnotationDataset(
+#     image_dir=r"F:\DATASET\NACTI\images\nacti_part0",
+#     json_path=r"E:\result\json\detection\part0output.json",
+#     csv_path=r"F:\DATASET\NACTI\meta\nacti_metadata_part0.csv"
+# )
+#
+# # check the length of the dataset
+# print("Dataset length:", len(dataset))
+#
+# for idx in range(5):
+#     try:
+#         image, target = dataset[idx]
+#         print(f"Image loaded: {image.size}, Target: {target}")
+#     except FileNotFoundError as e:
+#         print(e)
 
 # common name:
 # common_name_to_idx: {

@@ -27,6 +27,19 @@ def collate_fn_remove_none(batch):
     imgs, tgts = zip(*filtered_batch)
     return list(imgs), list(tgts)
 
+def pil_collect_fn(batch):
+    """
+    Custom collate function that returns a list of PIL.Image and target_dict.
+
+    Args:
+        batch (list): A list of (PIL.Image, target_dict) tuples.
+
+    Returns:
+        (list, list): List of PIL.Image and list of target_dict.
+    """
+    imgs, tgts = zip(*batch)
+    return list(imgs), list(tgts)
+
 
 def train_one_epoch(model,
                     loader,
@@ -76,9 +89,6 @@ def train_one_epoch(model,
         all_labels = []
 
         for i in range(len(images)):
-            if images[i] is None or targets[i] is None:
-                continue
-
             # 'images[i]' is a PIL.Image if the dataset does not apply transforms
             pil_img = images[i]
             target_dict = targets[i]
@@ -193,9 +203,6 @@ def validate(model, loader, criterion, device, writer, epoch, transform=None):
             all_labels = []
 
             for i in range(len(images)):
-                if images[i] is None or targets[i] is None:
-                    continue
-
                 pil_img = images[i]
                 target_dict = targets[i]
                 boxes = target_dict["boxes"]
@@ -286,14 +293,16 @@ if __name__ == "__main__":
     # model.num_cls = 46
     num_features = model.net.classifier.in_features
     # print(f"Number of features in the model: {num_features}") 2048
-    model.net.classifier = torch.nn.Linear(num_features, 46)
-    # model.net.classifier = torch.nn.Sequential(
-    #     torch.nn.Linear(num_features, 512),
-    #     torch.nn.ReLU(),
-    #     torch.nn.Dropout(0.5),
-    #     torch.nn.Linear(512, 46)
-    # )
+    # model.net.classifier = torch.nn.Linear(num_features, 46)
+    model.net.classifier = torch.nn.Sequential(
+        torch.nn.Linear(num_features, 512),
+        torch.nn.ReLU(),
+        torch.nn.Dropout(0.5),
+        torch.nn.Linear(512, 46)
+    )
+    print("Initialized model with 46 classes.")
 
+    print("Loading dataset...")
     dataset = NACTIAnnotationDataset(
         image_dir=r"F:\DATASET\NACTI\images\nacti_part0",
         json_path=r"E:\result\json\detection\part0output.json",
@@ -313,15 +322,13 @@ if __name__ == "__main__":
     train_loader = DataLoader(train_dataset,
                               batch_size=8,
                               shuffle=True,
-                              collate_fn=collate_fn_remove_none)
+                              collate_fn=pil_collect_fn)
     val_loader = DataLoader(val_dataset,
                             batch_size=8,
                             shuffle=False,
-                            collate_fn=collate_fn_remove_none)
-    test_loader = DataLoader(test_dataset,
-                             batch_size=8,
-                             shuffle=False,
-                             collate_fn=collate_fn_remove_none)
+                            collate_fn=pil_collect_fn)
+
+    print("DataLoaders created.")
 
     model.to(device)
     optimizer = optim.AdamW(model.parameters(), lr=0.0001)
