@@ -5,7 +5,7 @@ from tqdm import tqdm
 from torch.utils.data import random_split, DataLoader
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
-from sklearn.metrics import precision_score, recall_score, f1_score
+from sklearn.metrics import precision_score, recall_score, f1_score, average_precision_score
 from dataset import NACTIAnnotationDataset
 
 
@@ -165,7 +165,7 @@ def train_one_epoch(model,
 def validate(model, loader, criterion, device, writer, epoch, transform=None):
     """
     Validation step for batch_size=1, bounding-box-level classification.
-    No backpropagation, just forward passes to evaluate loss and accuracy.
+    Includes mAP calculation for multi-label classification.
 
     Args:
         model (nn.Module): The classification model to validate.
@@ -182,7 +182,8 @@ def validate(model, loader, criterion, device, writer, epoch, transform=None):
             'acc': float,
             'precision': float,
             'recall': float,
-            'f1': float
+            'f1': float,
+            'mAP': float
         }
     """
     model.eval()
@@ -193,6 +194,7 @@ def validate(model, loader, criterion, device, writer, epoch, transform=None):
 
     all_val_preds = []
     all_val_labels = []
+    all_val_probs = []
 
     with torch.no_grad():
         for batch_idx, (images, targets) in enumerate(tqdm(loader, desc=f"Epoch {epoch} [Val]")):
@@ -250,13 +252,27 @@ def validate(model, loader, criterion, device, writer, epoch, transform=None):
 
             all_val_preds.extend(predicted.cpu().tolist())
             all_val_labels.extend(batch_labels.cpu().tolist())
+            all_val_probs.extend(outputs.softmax(dim=1).cpu().tolist())
 
     val_loss = val_running_loss / max(val_running_total, 1)
     val_acc = val_correct / max(val_total, 1)
 
+    # Calculate precision, recall, F1-score
     val_precision = precision_score(all_val_labels, all_val_preds, average='macro', zero_division=0)
     val_recall = recall_score(all_val_labels, all_val_preds, average='macro', zero_division=0)
     val_f1 = f1_score(all_val_labels, all_val_preds, average='macro', zero_division=0)
+
+    # Calculate mAP
+    all_val_labels_one_hot = torch.nn.functional.one_hot(
+        torch.tensor(all_val_labels), num_classes=46
+    ).cpu().numpy()
+    all_val_probs_np = torch.tensor(all_val_probs).cpu().numpy()
+
+    mAP = 0
+    try:
+        mAP = average_precision_score(all_val_labels_one_hot, all_val_probs_np, average="macro")
+    except ValueError:
+        print("Error calculating mAP. Ensure non-empty predictions.")
 
     if writer is not None:
         writer.add_scalar('Val/Loss_epoch', val_loss, epoch)
@@ -264,6 +280,7 @@ def validate(model, loader, criterion, device, writer, epoch, transform=None):
         writer.add_scalar('Val/Precision_epoch', val_precision, epoch)
         writer.add_scalar('Val/Recall_epoch', val_recall, epoch)
         writer.add_scalar('Val/F1_epoch', val_f1, epoch)
+        writer.add_scalar('Val/mAP_epoch', mAP, epoch)
 
     metrics = {
         'loss': val_loss,
@@ -271,8 +288,10 @@ def validate(model, loader, criterion, device, writer, epoch, transform=None):
         'precision': val_precision,
         'recall': val_recall,
         'f1': val_f1,
+        'mAP': mAP,
     }
     return metrics
+
 
 if __name__ == "__main__":
     # Select device
@@ -293,13 +312,13 @@ if __name__ == "__main__":
     # model.num_cls = 46
     num_features = model.net.classifier.in_features
     # print(f"Number of features in the model: {num_features}") 2048
-    # model.net.classifier = torch.nn.Linear(num_features, 46)
-    model.net.classifier = torch.nn.Sequential(
-        torch.nn.Linear(num_features, 512),
-        torch.nn.ReLU(),
-        torch.nn.Dropout(0.5),
-        torch.nn.Linear(512, 46)
-    )
+    model.net.classifier = torch.nn.Linear(num_features, 46)
+    # model.net.classifier = torch.nn.Sequential(
+    #     torch.nn.Linear(num_features, 512),
+    #     torch.nn.ReLU(),
+    #     torch.nn.Dropout(0.5),
+    #     torch.nn.Linear(512, 46)
+    # )
     print("Initialized model with 46 classes.")
 
     print("Loading dataset...")
@@ -334,7 +353,7 @@ if __name__ == "__main__":
     optimizer = optim.AdamW(model.parameters(), lr=0.0001)
     criterion = torch.nn.CrossEntropyLoss() # default mode is mean
     writer = SummaryWriter()
-    num_epochs = 10
+    num_epochs = 20
     global_step = 0
 
     # best f1 for saving the model
@@ -362,7 +381,8 @@ if __name__ == "__main__":
               f"Acc: {val_metrics['acc']:.4f} | "
               f"Precision: {val_metrics['precision']:.4f} | "
               f"Recall: {val_metrics['recall']:.4f} | "
-              f"F1: {val_metrics['f1']:.4f}")
+              f"F1: {val_metrics['f1']:.4f} | "
+              f"mAP: {val_metrics['mAP']:.4f}")
 
         # save the best model
         if val_metrics['f1'] > best_f1:
