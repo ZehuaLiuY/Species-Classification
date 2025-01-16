@@ -10,7 +10,7 @@ from dataset import NACTIAnnotationDataset
 import argparse
 
 parser = argparse.ArgumentParser(
-    description="Republish Predicting Eye Fixations",
+    description="Test the fine tuned model on the NACTI dataset.",
     formatter_class=argparse.ArgumentDefaultsHelpFormatter,
 )
 
