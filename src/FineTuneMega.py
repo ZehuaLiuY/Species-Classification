@@ -7,7 +7,7 @@ import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import precision_score, recall_score, f1_score, average_precision_score
 from dataset import NACTIAnnotationDataset
-
+import numpy as np
 
 def collate_fn_remove_none(batch):
     """
@@ -268,9 +268,17 @@ def validate(model, loader, criterion, device, writer, epoch, transform=None):
     ).cpu().numpy()
     all_val_probs_np = torch.tensor(all_val_probs).cpu().numpy()
 
+    # appeared class
+    appeared_class = np.where(all_val_labels_one_hot.sum(axis=0) > 0)[0]
+    if len(appeared_class) == 0:
+        print("No appeared class in validation.")
+
+
     mAP = 0
     try:
-        mAP = average_precision_score(all_val_labels_one_hot, all_val_probs_np, average="macro")
+        filtered_labels = all_val_labels_one_hot[:, appeared_class]
+        filtered_probs = all_val_probs_np[:, appeared_class]
+        mAP = average_precision_score(filtered_labels, filtered_probs, average="macro")
     except ValueError:
         print("Error calculating mAP. Ensure non-empty predictions.")
 
