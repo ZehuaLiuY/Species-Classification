@@ -145,6 +145,16 @@ def test_model(model, loader, criterion, device, transform=None):
     test_recall = recall_score(all_test_labels, all_test_preds, average='macro', zero_division=0)
     test_f1 = f1_score(all_test_labels, all_test_preds, average='macro', zero_division=0)
 
+    test_recall_per_class = recall_score(
+        all_test_labels,
+        all_test_preds,
+        labels = list(set(all_test_labels)),
+        average=None,
+        zero_division=0
+    )
+
+    for class_idx, r in enumerate(test_recall_per_class):
+        print(f"Class {class_idx}: {r:.4f}")
 
     metrics = {
         'loss': test_loss,
