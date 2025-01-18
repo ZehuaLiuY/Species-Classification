@@ -66,8 +66,8 @@ def train_one_epoch(
             boxes = target_dict["boxes"]    # shape: [N, 4] => [x, y, w, h]
             labels = target_dict["labels"]  # shape: [N]
 
-            if boxes.size(0) == 0:
-                continue
+            # if boxes.size(0) == 0:
+            #     continue
 
             for j in range(boxes.size(0)):
                 x1, y1, w, h = boxes[j]
@@ -75,8 +75,8 @@ def train_one_epoch(
                 y2 = y1 + h
 
                 x1_, y1_, x2_, y2_ = map(int, [x1, y1, x2, y2])
-                if x1_ < 0 or y1_ < 0 or x2_ <= x1_ or y2_ <= y1_:
-                    continue
+                # if x1_ < 0 or y1_ < 0 or x2_ <= x1_ or y2_ <= y1_:
+                #     continue
 
                 cropped_pil = pil_img.crop((x1_, y1_, x2_, y2_))
                 if transform:
@@ -87,8 +87,8 @@ def train_one_epoch(
                 all_crops.append(cropped_tensor)
                 all_labels.append(labels[j].item())
 
-        if len(all_crops) == 0:
-            continue
+        # if len(all_crops) == 0:
+        #     continue
 
         batch_crops = torch.stack(all_crops, dim=0)
         batch_labels = torch.tensor(all_labels, dtype=torch.long, device=device)
@@ -141,28 +141,28 @@ def validate(model, loader, criterion, device, epoch, transform=None):
     val_correct = torch.tensor(0, dtype=torch.int32, device=device)
     val_total = torch.tensor(0, dtype=torch.int32, device=device)
 
-    # all_val_preds = []
-    # all_val_labels = []
+    local_preds = []
+    local_labels = []
 
     with torch.no_grad():
         for batch_idx, (images, targets) in enumerate(loader):
-            if images is None or targets is None:
-                continue
+            # if images is None or targets is None:
+            #     continue
 
             all_crops = []
             all_labels = []
 
             for i in range(len(images)):
-                if images[i] is None or targets[i] is None:
-                    continue
+                # if images[i] is None or targets[i] is None:
+                #     continue
 
                 pil_img = images[i]
                 target_dict = targets[i]
                 boxes = target_dict["boxes"]
                 labels = target_dict["labels"]
 
-                if boxes.size(0) == 0:
-                    continue
+                # if boxes.size(0) == 0:
+                #     continue
 
                 for j in range(boxes.size(0)):
                     x1, y1, w, h = boxes[j]
@@ -170,8 +170,8 @@ def validate(model, loader, criterion, device, epoch, transform=None):
                     y2 = y1 + h
 
                     x1_, y1_, x2_, y2_ = map(int, [x1, y1, x2, y2])
-                    if x1_ < 0 or y1_ < 0 or x2_ <= x1_ or y2_ <= y1_:
-                        continue
+                    # if x1_ < 0 or y1_ < 0 or x2_ <= x1_ or y2_ <= y1_:
+                    #     continue
 
                     cropped_pil = pil_img.crop((x1_, y1_, x2_, y2_))
                     if transform:
@@ -182,8 +182,8 @@ def validate(model, loader, criterion, device, epoch, transform=None):
                     all_crops.append(cropped_tensor)
                     all_labels.append(labels[j].item())
 
-            if len(all_crops) == 0:
-                continue
+            # if len(all_crops) == 0:
+            #     continue
 
             batch_crops = torch.stack(all_crops, dim=0)
             batch_labels = torch.tensor(all_labels, dtype=torch.long, device=device)
@@ -202,8 +202,8 @@ def validate(model, loader, criterion, device, epoch, transform=None):
             val_correct += (predicted == batch_labels).sum().item()
             val_total += batch_labels.size(0)
 
-            # all_val_preds.extend(predicted.cpu().tolist())
-            # all_val_labels.extend(batch_labels.cpu().tolist())
+            local_preds.append(predicted.cpu().numpy())
+            local_labels.append(batch_labels.cpu().numpy())
 
     torch.cuda.synchronize()
     dist.reduce(validation_loss, 0, op=dist.ReduceOp.SUM)
@@ -211,14 +211,27 @@ def validate(model, loader, criterion, device, epoch, transform=None):
     dist.reduce(val_correct, 0, op=dist.ReduceOp.SUM)
     dist.reduce(val_total, 0, op=dist.ReduceOp.SUM)
 
+    local_preds = np.concatenate(local_preds, axis=0) if len(local_preds) > 0 else np.array([])
+    local_labels = np.concatenate(local_labels, axis=0) if len(local_labels) > 0 else np.array([])
+
+    gather_list_preds = [None for _ in range(world_size)]
+    gather_list_labels = [None for _ in range(world_size)]
+
+    dist.all_gather_object(gather_list_preds, local_preds)
+    dist.all_gather_object(gather_list_labels, local_labels)
+
+
     if rank == 0:
         val_running_loss = validation_loss.sum().item()
         val_loss = val_running_loss / max(val_running_total, 1)
         val_acc = val_correct / max(val_total, 1)
 
-        # val_precision = precision_score(all_val_labels, all_val_preds, average='macro', zero_division=0)
-        # val_recall = recall_score(all_val_labels, all_val_preds, average='macro', zero_division=0)
-        # val_f1 = f1_score(all_val_labels, all_val_preds, average='macro', zero_division=0)
+        global_preds = np.concatenate([arr for arr in gather_list_preds if arr is not None])
+        global_labels = np.concatenate([arr for arr in gather_list_labels if arr is not None])
+
+        val_precision = precision_score(global_labels, global_preds, average='macro', zero_division=0)
+        val_recall = recall_score(global_labels, global_preds, average='macro', zero_division=0)
+        val_f1 = f1_score(global_labels, global_preds, average='macro', zero_division=0)
 
         # if writer is not None:
         #     writer.add_scalar('Val/Loss_epoch', val_loss, epoch)
@@ -230,9 +243,9 @@ def validate(model, loader, criterion, device, epoch, transform=None):
         metrics = {
             'loss': val_loss,
             'acc': val_acc,
-            # 'precision': val_precision,
-            # 'recall': val_recall,
-            # 'f1': val_f1,
+            'precision': val_precision,
+            'recall': val_recall,
+            'f1': val_f1,
         }
         return metrics
     return None
@@ -276,8 +289,20 @@ def main_worker(args):
     )
 
     # DistributedSampler
-    train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank, shuffle=True)
-    val_sampler = DistributedSampler(val_dataset, num_replicas=world_size, rank=rank, shuffle=True)
+    train_sampler = DistributedSampler(
+        train_dataset,
+        num_replicas=world_size,
+        rank=rank,
+        shuffle=True,
+        drop_last=True
+    )
+    val_sampler = DistributedSampler(
+        val_dataset,
+        num_replicas=world_size,
+        rank=rank,
+        shuffle=True,
+        drop_last=True
+    )
 
     train_loader = DataLoader(
         train_dataset,
@@ -356,23 +381,18 @@ def main_worker(args):
         if rank == 0:
             print(f"[Validation] Loss: {val_metrics['loss']:.4f} | "
                   f"Acc: {val_metrics['acc']:.4f} | "
-                  #   f"Precision: {val_metrics['precision']:.4f} | "
-                  #   f"Recall: {val_metrics['recall']:.4f} | "
-                  #   f"F1: {val_metrics['f1']:.4f}"
+                  f"Precision: {val_metrics['precision']:.4f} | "
+                  f"Recall: {val_metrics['recall']:.4f} | "
+                  f"F1: {val_metrics['f1']:.4f}"
                   )
 
-            if val_metrics['acc'] > best_f1:
-                best_f1 = val_metrics['acc']
-                torch.save(model.state_dict(), "./model/best_model_ddp.pth")
+            if val_metrics['f1'] > best_f1:
+                best_f1 = val_metrics['f1']
+                torch.save(model.state_dict(), "./model/ddp/best_model_ddp.pth")
                 print(f"Best model saved with F1: {best_f1:.4f}, at epoch: {epoch}")
 
-            # if val_metrics['f1'] > best_f1:
-            #     best_f1 = val_metrics['f1']
-            #     torch.save(model.state_dict(), "./model/best_model_ddp.pth")
-            #     print(f"Best model saved with F1: {best_f1:.4f}, at epoch: {epoch}")
-
     if rank == 0:
-        torch.save(model.state_dict(), "./model/final_model_ddp.pth")
+        torch.save(model.state_dict(), "./model/ddp/final_model_ddp.pth")
         print("Final model saved.")
 
     dist.destroy_process_group()
