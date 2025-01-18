@@ -3,8 +3,6 @@ from torchvision import transforms
 from PytorchWildlife.models import classification as pw_classification
 from tqdm import tqdm
 from torch.utils.data import random_split, DataLoader
-import torch.optim as optim
-from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import precision_score, recall_score, f1_score
 from dataset import NACTIAnnotationDataset
 import argparse
@@ -235,7 +233,6 @@ def main(args):
         collate_fn=pil_collect_fn
     )
 
-    writer = SummaryWriter()
     criterion = torch.nn.CrossEntropyLoss()
 
     # Test
@@ -246,14 +243,24 @@ def main(args):
           f"Recall: {test_metrics['recall']:.4f} | "
           f"F1: {test_metrics['f1']:.4f}")
 
-    # log test metrics to TensorBoard
-    writer.add_scalar('Test/Loss', test_metrics['loss'], 0)
-    writer.add_scalar('Test/Accuracy', test_metrics['acc'], 0)
-    writer.add_scalar('Test/Precision', test_metrics['precision'], 0)
-    writer.add_scalar('Test/Recall', test_metrics['recall'], 0)
-    writer.add_scalar('Test/F1', test_metrics['f1'], 0)
+    # write the test metrics into a txt file
+    with open("test_results.txt", "w", encoding="utf-8") as f:
+        f.write("==== Test Results ====\n")
+        f.write(f"Loss: {test_metrics['loss']:.4f}\n")
+        f.write(f"Acc: {test_metrics['acc']:.4f}\n")
+        f.write(f"Precision: {test_metrics['precision']:.4f}\n")
+        f.write(f"Recall: {test_metrics['recall']:.4f}\n")
+        f.write(f"F1: {test_metrics['f1']:.4f}\n\n")
 
-    writer.close()
+        f.write("Per-class Recall:\n")
+        for idx, cls_label in enumerate(test_metrics['classes_order']):
+            f.write(f"  Class {cls_label}: {test_metrics['per_class_recall'][idx]:.4f}\n")
+
+        f.write("\nPer-class Accuracy:\n")
+        for idx, cls_label in enumerate(test_metrics['classes_order']):
+            f.write(f"  Class {cls_label}: {test_metrics['per_class_accuracy'][idx]:.4f}\n")
+
+    print("Test results saved to test_results.txt, test done.")
 
 if __name__ == "__main__":
     main(parser.parse_args())
