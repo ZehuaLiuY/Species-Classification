@@ -145,6 +145,23 @@ def test_model(model, loader, criterion, device, transform=None):
     test_recall = recall_score(all_test_labels, all_test_preds, average='macro', zero_division=0)
     test_f1 = f1_score(all_test_labels, all_test_preds, average='macro', zero_division=0)
 
+    # calculate per-class accuracy
+    unique_labels = sorted(list(set(all_test_labels)))
+    per_class_accuracy = []
+
+    for label in unique_labels:
+        total_class_samples = sum([1 for l in all_test_labels if l == label])
+        correct_class_samples = sum(
+            1
+            for pred, gt in zip(all_test_preds, all_test_labels)
+            if (gt == label and pred == label)
+        )
+        if total_class_samples > 0:
+            acc = correct_class_samples / total_class_samples
+        else:
+            acc = 0.0
+        per_class_accuracy.append(acc)
+
     test_recall_per_class = recall_score(
         all_test_labels,
         all_test_preds,
@@ -152,6 +169,11 @@ def test_model(model, loader, criterion, device, transform=None):
         average=None,
         zero_division=0
     )
+
+    print("Per-class accuracy:")
+    for idx, acc in enumerate(per_class_accuracy):
+        print(f"  Class {unique_labels[idx]}: {acc:.4f}")
+
 
     for class_idx, r in enumerate(test_recall_per_class):
         print(f"Class {class_idx}: {r:.4f}")
@@ -162,6 +184,9 @@ def test_model(model, loader, criterion, device, transform=None):
         'precision': test_precision,
         'recall': test_recall,
         'f1': test_f1,
+        'per_class_recall': test_recall_per_class,
+        'per_class_accuracy': per_class_accuracy,
+        'classes_order': unique_labels
     }
     return metrics
 
