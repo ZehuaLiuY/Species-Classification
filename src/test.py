@@ -20,6 +20,19 @@ parser.add_argument(
     help="Path to the model.pth file",
 )
 
+def pil_collect_fn(batch):
+    """
+    Custom collate function that returns a list of PIL.Image and target_dict.
+
+    Args:
+        batch (list): A list of (PIL.Image, target_dict) tuples.
+
+    Returns:
+        (list, list): List of PIL.Image and list of target_dict.
+    """
+    imgs, tgts = zip(*batch)
+    return list(imgs), list(tgts)
+
 def collate_fn_remove_none(batch):
     """
     Custom collate function that removes None samples.
@@ -184,7 +197,7 @@ def main(args):
         test_dataset,
         batch_size=8,
         shuffle=False,
-        collate_fn=collate_fn_remove_none
+        collate_fn=pil_collect_fn
     )
 
     writer = SummaryWriter()
