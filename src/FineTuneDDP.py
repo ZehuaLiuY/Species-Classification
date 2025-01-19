@@ -35,7 +35,7 @@ def pil_collect_fn(batch):
 
 
 def worker_init(wrk_id):
-    np.random.seed(torch.utils.data.get_worker_info().seed%(2**32 - 1))
+    np.random.seed(torch.utils.data.get_worker_info().seed % (2**32 - 1))
 
 def train_one_epoch(
         model,
@@ -45,7 +45,9 @@ def train_one_epoch(
         device,
         epoch,
         global_step_start=0,
-        transform=None
+        transform=None,
+        writer=None,
+        log_interval=10
 ):
 
     model.train()
@@ -53,6 +55,7 @@ def train_one_epoch(
     running_samples = torch.tensor(0, dtype=torch.int32, device=device)
     correct = torch.tensor(0, dtype=torch.int32, device=device)
     total = torch.tensor(0, dtype=torch.int32, device=device)
+
     global_step = global_step_start
 
     for batch_idx, (images, targets) in enumerate(loader):
@@ -110,10 +113,11 @@ def train_one_epoch(
         correct += (predicted == batch_labels).sum().item()
         total += batch_labels.size(0)
 
-        # if writer is not None and ((batch_idx + 1) % log_interval == 0):
-        #     batch_acc = (predicted == batch_labels).float().mean().item()
-        #     writer.add_scalar('Train/Loss_batch', batch_loss, global_step)
-        #     writer.add_scalar('Train/Accuracy_batch', batch_acc, global_step)
+        # log per batch on rank 0
+        if writer is not None and (batch_idx + 1) % log_interval == 0:
+            batch_acc = (predicted == batch_labels).float().mean().item()
+            writer.add_scalar('Train/Batch_Loss', batch_loss, global_step)
+            writer.add_scalar('Train/Batch_Accuracy', batch_acc, global_step)
 
         global_step += 1
 
@@ -220,7 +224,6 @@ def validate(model, loader, criterion, device, epoch, transform=None):
     dist.all_gather_object(gather_list_preds, local_preds)
     dist.all_gather_object(gather_list_labels, local_labels)
 
-
     if rank == 0:
         val_running_loss = validation_loss.sum().item()
         val_loss = val_running_loss / max(val_running_total, 1)
@@ -232,13 +235,6 @@ def validate(model, loader, criterion, device, epoch, transform=None):
         val_precision = precision_score(global_labels, global_preds, average='macro', zero_division=0)
         val_recall = recall_score(global_labels, global_preds, average='macro', zero_division=0)
         val_f1 = f1_score(global_labels, global_preds, average='macro', zero_division=0)
-
-        # if writer is not None:
-        #     writer.add_scalar('Val/Loss_epoch', val_loss, epoch)
-        #     writer.add_scalar('Val/Accuracy_epoch', val_acc, epoch)
-        #     # writer.add_scalar('Val/Precision_epoch', val_precision, epoch)
-        #     # writer.add_scalar('Val/Recall_epoch', val_recall, epoch)
-        #     # writer.add_scalar('Val/F1_epoch', val_f1, epoch)
 
         metrics = {
             'loss': val_loss,
@@ -335,11 +331,12 @@ def main_worker(args):
     model.to(device)
 
     if world_size > 1:
-        model = DDP(model,
-                    device_ids=[local_rank],
-                    output_device=local_rank,
-                    find_unused_parameters=True,
-                    )
+        model = DDP(
+            model,
+            device_ids=[local_rank],
+            output_device=local_rank,
+            find_unused_parameters=True,
+        )
 
     optimizer = optim.AdamW(model.parameters(), lr=args.lr)
 
@@ -347,10 +344,11 @@ def main_worker(args):
 
     criterion = torch.nn.CrossEntropyLoss()
 
-    # if rank == 0:
-    #     writer = SummaryWriter()
-    # else:
-    #     writer = None
+    # Create a SummaryWriter only on rank 0, so only the main process logs.
+    if rank == 0:
+        writer = SummaryWriter(log_dir="./runs_ddp")
+    else:
+        writer = None
 
     best_f1 = 0
     global_step = 0
@@ -360,25 +358,43 @@ def main_worker(args):
 
         # training phase
         train_epoch_loss, train_epoch_acc, global_step = train_one_epoch(
-            model, train_loader, optimizer, criterion,
+            model,
+            train_loader,
+            optimizer,
+            criterion,
             device,
             epoch,
             global_step_start=global_step,
+            transform=transform,
+            writer=writer,   # Pass the writer to the function
+            log_interval=10  # Log every 10 iterations
+        )
+
+        if rank == 0:
+            # Log epoch-level stats
+            writer.add_scalar('Train/Epoch_Loss', train_epoch_loss, epoch)
+            writer.add_scalar('Train/Epoch_Accuracy', train_epoch_acc, epoch)
+
+            print(f"[Train] Epoch {epoch}/{args.epochs} | "
+                  f"Loss: {train_epoch_loss:.4f} | Acc: {train_epoch_acc:.4f}")
+
+        # validation phase
+        val_metrics = validate(
+            model,
+            val_loader,
+            criterion,
+            device,
+            epoch,
             transform=transform
         )
 
         if rank == 0:
-            print(f"[Train] Epoch {epoch}/{args.epochs} | "
-                  f"Loss: {train_epoch_loss:.4f} | Acc: {train_epoch_acc:.4f}")
+            writer.add_scalar('Val/Epoch_Loss', val_metrics['loss'], epoch)
+            writer.add_scalar('Val/Epoch_Accuracy', val_metrics['acc'], epoch)
+            writer.add_scalar('Val/Epoch_Precision', val_metrics['precision'], epoch)
+            writer.add_scalar('Val/Epoch_Recall', val_metrics['recall'], epoch)
+            writer.add_scalar('Val/Epoch_F1', val_metrics['f1'], epoch)
 
-
-        # validation phase
-        val_metrics = validate(
-            model, val_loader, criterion, device,
-            epoch, transform=transform
-        )
-
-        if rank == 0:
             print(f"[Validation] Loss: {val_metrics['loss']:.4f} | "
                   f"Acc: {val_metrics['acc']:.4f} | "
                   f"Precision: {val_metrics['precision']:.4f} | "
@@ -386,6 +402,7 @@ def main_worker(args):
                   f"F1: {val_metrics['f1']:.4f}"
                   )
 
+            # Save best model
             if val_metrics['f1'] > best_f1:
                 best_f1 = val_metrics['f1']
                 torch.save(model.state_dict(), "./model/ddp/best_model_ddp.pth")
@@ -394,6 +411,7 @@ def main_worker(args):
     if rank == 0:
         torch.save(model.state_dict(), "./model/ddp/final_model_ddp.pth")
         print("Final model saved.")
+        writer.close()  # Close the writer
 
     dist.destroy_process_group()
 
