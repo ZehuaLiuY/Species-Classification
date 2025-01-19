@@ -18,6 +18,12 @@ parser.add_argument(
     help="Path to the model.pth file",
 )
 
+parser.add_argument(
+    "--train_type",
+    choices=['single', 'ddp'], default='single',
+    help="Choose training type: 'single' for single GPU or 'ddp' for DistributedDataParallel"
+)
+
 def pil_collect_fn(batch):
     """
     Custom collate function that returns a list of PIL.Image and target_dict.
@@ -201,7 +207,13 @@ def main(args):
 
     checkpoint = torch.load(args.model_path, map_location=device)
     state_dict = checkpoint.get("model", checkpoint)
-    state_dict = {k: v for k, v in state_dict.items() if k in model.state_dict()}
+
+    # check if the model was trained with DDP, if so, remove the "module." prefix
+    if args.train_type == 'ddp':
+        state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
+    else:
+        state_dict = {k: v for k, v in state_dict.items() if k in model.state_dict()}
+
     model.load_state_dict(state_dict, strict=False)
     model = model.to(device)
 
