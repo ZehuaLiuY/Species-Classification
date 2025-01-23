@@ -327,7 +327,7 @@ def main_worker(args):
     # ---- model ----
     model = pw_classification.AI4GAmazonRainforest(device=device)
     num_features = model.net.classifier.in_features
-    model.net.classifier = torch.nn.Linear(num_features, 46)
+    model.net.classifier = torch.nn.Linear(num_features, 47)
     model.to(device)
 
     if world_size > 1:
