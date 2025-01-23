@@ -137,7 +137,7 @@ def train_one_epoch(
     return None, None, global_step
 
 
-def validate(model, loader, criterion, device, epoch, transform=None):
+def validate(model, loader, criterion, device, epoch, transform=None, writer=None):
     torch.cuda.synchronize()
     model.eval()
     validation_loss = torch.zeros(len(loader), dtype=torch.float32, device=device)
@@ -236,6 +236,28 @@ def validate(model, loader, criterion, device, epoch, transform=None):
         val_recall = recall_score(global_labels, global_preds,  average='weighted' , zero_division=0)
         val_f1 = f1_score(global_labels, global_preds,  average='weighted' , zero_division=0)
 
+        # per-class Accuracy and Recall
+        unique_labels = np.unique(global_labels)
+        # 1) Per-class Accuracy
+        per_class_accuracy = []
+        for label in unique_labels:
+            total_class_samples = np.sum(global_labels == label)
+            correct_class_samples = np.sum((global_labels == label) & (global_preds == label))
+            if total_class_samples > 0:
+                acc = correct_class_samples / total_class_samples
+            else:
+                acc = 0.0
+            per_class_accuracy.append(acc)
+
+        # 2) Per-class Recall
+        per_class_recall = recall_score(
+            global_labels,
+            global_preds,
+            labels=unique_labels,
+            average=None,
+            zero_division=0
+        )
+
         metrics = {
             'loss': val_loss,
             'acc': val_acc,
@@ -243,6 +265,20 @@ def validate(model, loader, criterion, device, epoch, transform=None):
             'recall': val_recall,
             'f1': val_f1,
         }
+
+        if writer is not None:
+            # Log epoch-level stats
+            writer.add_scalar('Val/Epoch_Loss', val_loss, epoch)
+            writer.add_scalar('Val/Epoch_Accuracy', val_acc, epoch)
+            writer.add_scalar('Val/Epoch_Precision', val_precision, epoch)
+            writer.add_scalar('Val/Epoch_Recall', val_recall, epoch)
+            writer.add_scalar('Val/Epoch_F1', val_f1, epoch)
+
+            # per-class metrics
+            for i, cls_label in enumerate(unique_labels):
+                writer.add_scalar(f'Val/PerClassAccuracy/class_{cls_label}', per_class_accuracy[i], epoch)
+                writer.add_scalar(f'Val/PerClassRecall/class_{cls_label}', per_class_recall[i], epoch)
+
         return metrics
     return None
 
@@ -385,16 +421,11 @@ def main_worker(args):
             criterion,
             device,
             epoch,
-            transform=transform
+            transform=transform,
+            writer=writer
         )
 
         if rank == 0:
-            writer.add_scalar('Val/Epoch_Loss', val_metrics['loss'], epoch)
-            writer.add_scalar('Val/Epoch_Accuracy', val_metrics['acc'], epoch)
-            writer.add_scalar('Val/Epoch_Precision', val_metrics['precision'], epoch)
-            writer.add_scalar('Val/Epoch_Recall', val_metrics['recall'], epoch)
-            writer.add_scalar('Val/Epoch_F1', val_metrics['f1'], epoch)
-
             print(f"[Validation] Loss: {val_metrics['loss']:.4f} | "
                   f"Acc: {val_metrics['acc']:.4f} | "
                   f"Precision: {val_metrics['precision']:.4f} | "
