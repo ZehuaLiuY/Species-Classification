@@ -232,9 +232,9 @@ def validate(model, loader, criterion, device, epoch, transform=None):
         global_preds = np.concatenate([arr for arr in gather_list_preds if arr is not None])
         global_labels = np.concatenate([arr for arr in gather_list_labels if arr is not None])
 
-        val_precision = precision_score(global_labels, global_preds, average='macro', zero_division=0)
-        val_recall = recall_score(global_labels, global_preds, average='macro', zero_division=0)
-        val_f1 = f1_score(global_labels, global_preds, average='macro', zero_division=0)
+        val_precision = precision_score(global_labels, global_preds,  average='weighted' , zero_division=0)
+        val_recall = recall_score(global_labels, global_preds,  average='weighted' , zero_division=0)
+        val_f1 = f1_score(global_labels, global_preds,  average='weighted' , zero_division=0)
 
         metrics = {
             'loss': val_loss,
@@ -346,7 +346,7 @@ def main_worker(args):
 
     # Create a SummaryWriter only on rank 0, so only the main process logs.
     if rank == 0:
-        writer = SummaryWriter(log_dir="./runs_ddp")
+        writer = SummaryWriter(log_dir="./runs_ddp/")
     else:
         writer = None
 
