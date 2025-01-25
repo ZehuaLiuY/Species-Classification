@@ -163,3 +163,4 @@ cython_debug/
 /src/runs/
 .DS_Store
 /src/models/
+/metadata/
