@@ -386,8 +386,9 @@ def main_worker(args):
     else:
         writer = None
 
-    best_f1 = 0
+    best_recall = 0
     global_step = 0
+    non_improvement = 0
 
     for epoch in range(1, args.epochs + 1):
         torch.cuda.synchronize()
@@ -432,12 +433,30 @@ def main_worker(args):
                   f"Recall: {val_metrics['recall']:.4f} | "
                   f"F1: {val_metrics['f1']:.4f}"
                   )
+            # --- early stopping ---
+            current_recall = val_metrics['recall']
 
-            # Save best model
-            if val_metrics['f1'] > best_f1:
-                best_f1 = val_metrics['f1']
+            # Save best model based on recall
+            # if the current recall is greater than the best recall + delta. continue training
+            # else if the current recall is less than the best recall + delta, increment non_improvement
+            # if non_improvement >= patience, stop training
+
+            if current_recall > best_recall + args.delta:
+                best_recall = current_recall
+                non_improvement = 0
                 torch.save(model.state_dict(), "./model/ddp/best_model_ddp.pth")
-                print(f"Best model saved with F1: {best_f1:.4f}, at epoch: {epoch}")
+                print(f"Best model saved with recall: {best_recall:.4f}, at epoch: {epoch}")
+            else:
+                non_improvement += 1
+                print(f"No improvement in recall for {non_improvement} / {args.patience} epochs.")
+
+            stop = 1 if non_improvement >= args.patience else 0
+            stop_tensor = torch.tensor([stop], device=device)
+            dist.broadcast(stop_tensor, 0)
+
+            if stop_tensor.item() == 1:
+                print("Early stopping at epoch:", epoch)
+                break
 
     if rank == 0:
         torch.save(model.state_dict(), "./model/ddp/final_model_ddp.pth")
@@ -449,9 +468,11 @@ def main_worker(args):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--epochs', type=int, default=10, help="Number of total epochs to run")
+    parser.add_argument('--epochs', type=int, default=1000, help="Number of total epochs to run")
     parser.add_argument('--batch_size', type=int, default=32, help="Batch size per process")
     parser.add_argument('--lr', type=float, default=1e-4, help="Learning rate")
+    parser.add_argument('--patience', type=int, default=5, help="Patience for early stopping")
+    parser.add_argument('delta', type=float, default=1e-4, help="Minimal change for early stopping")
     args = parser.parse_args()
 
     print("DEBUG:", os.getenv('SLURM_NNODES'), os.getenv('SLURM_NTASKS'),
