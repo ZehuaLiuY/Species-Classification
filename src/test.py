@@ -225,7 +225,7 @@ def main(args):
     ])
 
     dataset = NACTIAnnotationDataset(
-        image_dir=r"F:\DATASET\NACTI\images\nacti_part0",
+        image_dir=r"F:\DATASET\NACTI\images",
         json_path=r"E:\result\json\detection\part0output.json",
         csv_path=r"F:\DATASET\NACTI\meta\nacti_metadata_part0.csv",
     )
