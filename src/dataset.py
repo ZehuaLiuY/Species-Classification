@@ -24,7 +24,7 @@ class NACTIAnnotationDataset(Dataset):
         #    - id_to_common_name: maps basename to its common_name string.
         #    - common_name_to_id: maps each unique common_name to an integer index.
         # --------------------------------------------------------------
-        csv_data = pd.read_csv(csv_path)
+        csv_data = pd.read_csv(csv_path, low_memory=False)
 
         # Ensure forward slashes on Windows systems
         csv_data['filename'] = csv_data['filename'].apply(lambda x: x.replace('\\', '/'))
