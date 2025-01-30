@@ -308,9 +308,9 @@ def main_worker(args):
     print("initialising dataset")
 
     dataset = NACTIAnnotationDataset(
-        image_dir=r"/user/work/bw19062/Individual_Project/dataset/images/part0",
-        json_path=r"/user/work/bw19062/Individual_Project/result/json/detection/part0output.json",
-        csv_path=r"/user/work/bw19062/Individual_Project/dataset/metadata/nacti_metadata_part0.csv",
+        image_dir=r"/user/work/bw19062/Individual_Project/dataset/image",
+        json_path=r"/user/work/bw19062/Individual_Project/dataset/metadata/detection/detection_filtered.json",
+        csv_path=r"/user/work/bw19062/Individual_Project/dataset/metadata/nacti_metadata_balanced.csv",
     )
 
     train_size = int(0.8 * len(dataset))
@@ -472,7 +472,7 @@ def main():
     parser.add_argument('--batch_size', type=int, default=32, help="Batch size per process")
     parser.add_argument('--lr', type=float, default=1e-4, help="Learning rate")
     parser.add_argument('--patience', type=int, default=5, help="Patience for early stopping")
-    parser.add_argument('delta', type=float, default=1e-4, help="Minimal change for early stopping")
+    parser.add_argument('--delta', type=float, default=1e-4, help="Minimal change for early stopping")
     args = parser.parse_args()
 
     print("DEBUG:", os.getenv('SLURM_NNODES'), os.getenv('SLURM_NTASKS'),
