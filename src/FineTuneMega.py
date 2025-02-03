@@ -320,7 +320,7 @@ if __name__ == "__main__":
     # model.num_cls = 46
     num_features = model.net.classifier.in_features
     # print(f"Number of features in the model: {num_features}") 2048
-    model.net.classifier = torch.nn.Linear(num_features, 46)
+    model.net.classifier = torch.nn.Linear(num_features, 49)
     # model.net.classifier = torch.nn.Sequential(
     #     torch.nn.Linear(num_features, 512),
     #     torch.nn.ReLU(),
@@ -331,10 +331,9 @@ if __name__ == "__main__":
 
     print("Loading dataset...")
     dataset = NACTIAnnotationDataset(
-        image_dir=r"F:\DATASET\NACTI\images\nacti_part0",
-        json_path=r"E:\result\json\detection\part0output.json",
-        csv_path=r"F:\DATASET\NACTI\meta\nacti_metadata_part0.csv",
-        # transforms=transform  # Resizing each image to 512x512
+        image_dir=r"F:\DATASET\NACTI\images",
+        json_path=r"E:\result\json\detection\detection_filtered.json",
+        csv_path=r"F:/DATASET/NACTI/meta/nacti_metadata_balanced.csv"
     )
 
     # Split dataset into train, val, test
@@ -361,8 +360,11 @@ if __name__ == "__main__":
     optimizer = optim.AdamW(model.parameters(), lr=0.0001)
     criterion = torch.nn.CrossEntropyLoss() # default mode is mean
     writer = SummaryWriter()
-    num_epochs = 20
+    num_epochs = 1000
     global_step = 0
+    patience = 5
+    no_improvements = 0
+    delta = 0.005
 
     # best f1 for saving the model
     best_f1 = 0
@@ -393,10 +395,16 @@ if __name__ == "__main__":
               f"mAP: {val_metrics['mAP']:.4f}")
 
         # save the best model
-        if val_metrics['f1'] > best_f1:
+        if val_metrics['f1'] > best_f1 + delta:
             best_f1 = val_metrics['f1']
             torch.save(model.state_dict(), "best_model.pth")
             print(f"Best model saved with F1: {best_f1:.4f}, in Epoch: {epoch}")
+            no_improvements = 0
+        else:
+            no_improvements += 1
+            if no_improvements >= patience:
+                print(f"Early stopping at Epoch: {epoch}")
+                break
 
     # save final the model
     torch.save(model.state_dict(), "final_model.pth")
