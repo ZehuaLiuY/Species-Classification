@@ -258,13 +258,13 @@ def validate(model, loader, criterion, device, writer, epoch, transform=None):
     val_acc = val_correct / max(val_total, 1)
 
     # Calculate precision, recall, F1-score
-    val_precision = precision_score(all_val_labels, all_val_preds, average='macro', zero_division=0)
-    val_recall = recall_score(all_val_labels, all_val_preds, average='macro', zero_division=0)
-    val_f1 = f1_score(all_val_labels, all_val_preds, average='macro', zero_division=0)
+    val_precision = precision_score(all_val_labels, all_val_preds, average='weighted', zero_division=0)
+    val_recall = recall_score(all_val_labels, all_val_preds, average='weighted', zero_division=0)
+    val_f1 = f1_score(all_val_labels, all_val_preds, average='weighted', zero_division=0)
 
     # Calculate mAP
     all_val_labels_one_hot = torch.nn.functional.one_hot(
-        torch.tensor(all_val_labels), num_classes=46
+        torch.tensor(all_val_labels), num_classes=49
     ).cpu().numpy()
     all_val_probs_np = torch.tensor(all_val_probs).cpu().numpy()
 
@@ -278,7 +278,7 @@ def validate(model, loader, criterion, device, writer, epoch, transform=None):
     try:
         filtered_labels = all_val_labels_one_hot[:, appeared_class]
         filtered_probs = all_val_probs_np[:, appeared_class]
-        mAP = average_precision_score(filtered_labels, filtered_probs, average="macro")
+        mAP = average_precision_score(filtered_labels, filtered_probs, average="weighted")
     except ValueError:
         print("Error calculating mAP. Ensure non-empty predictions.")
 
