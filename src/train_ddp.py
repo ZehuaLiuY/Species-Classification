@@ -13,6 +13,7 @@ from sklearn.metrics import precision_score, recall_score, f1_score
 from tqdm import tqdm
 import numpy as np
 from PytorchWildlife.models import classification as pw_classification
+from datetime import timedelta
 
 from dataset import NACTIAnnotationDataset
 
@@ -224,6 +225,39 @@ def validate(model, loader, criterion, device, epoch, transform=None, writer=Non
     dist.all_gather_object(gather_list_preds, local_preds)
     dist.all_gather_object(gather_list_labels, local_labels)
 
+    # local_preds_t = torch.as_tensor(local_preds, dtype=torch.long, device=device)
+    # local_labels_t = torch.as_tensor(local_labels, dtype=torch.long, device=device)
+    # pred_len = torch.tensor([local_preds_t.numel()], dtype=torch.long, device=device)
+    # label_len = torch.tensor([local_labels_t.numel()], dtype=torch.long, device=device)
+    # pred_len_list = [torch.zeros_like(pred_len) for _ in range(world_size)]
+    # label_len_list = [torch.zeros_like(label_len) for _ in range(world_size)]
+    # dist.all_gather(pred_len_list, pred_len)
+    # dist.all_gather(label_len_list, label_len)
+    # max_pred_len = max(x.item() for x in pred_len_list)
+    # max_label_len = max(x.item() for x in label_len_list)
+    # pad_local_preds = torch.full((max_pred_len,), -1, dtype=torch.long, device=device)
+    # pad_local_preds[: pred_len.item()] = local_preds_t
+
+    # pad_local_labels = torch.full((max_label_len,), -1, dtype=torch.long, device=device)
+    # pad_local_labels[: label_len.item()] = local_labels_t
+    # gathered_preds_t = [torch.zeros_like(pad_local_preds) for _ in range(world_size)]
+    # gathered_labels_t = [torch.zeros_like(pad_local_labels) for _ in range(world_size)]
+
+    # dist.all_gather(gathered_preds_t, pad_local_preds)
+    # dist.all_gather(gathered_labels_t, pad_local_labels)
+    # # 5) 去掉 padding，把所有 rank 的真实数据拼起来
+    # global_preds = []
+    # global_labels = []
+    # for r in range(world_size):
+    #     real_pred_len = pred_len_list[r].item()
+    #     real_label_len = label_len_list[r].item()
+    #     # 这里假设 preds 和 labels 的长度一致，否则需要更健壮的处理
+    #     global_preds.append(gathered_preds_t[r][:real_pred_len].cpu())
+    #     global_labels.append(gathered_labels_t[r][:real_label_len].cpu())
+
+    # global_preds = torch.cat(global_preds, dim=0).numpy()
+    # global_labels = torch.cat(global_labels, dim=0).numpy()
+
     if rank == 0:
         val_running_loss = validation_loss.sum().item()
         val_loss = val_running_loss / max(val_running_total, 1)
@@ -236,27 +270,27 @@ def validate(model, loader, criterion, device, epoch, transform=None, writer=Non
         val_recall = recall_score(global_labels, global_preds,  average='weighted' , zero_division=0)
         val_f1 = f1_score(global_labels, global_preds,  average='weighted' , zero_division=0)
 
-        # per-class Accuracy and Recall
-        unique_labels = np.unique(global_labels)
-        # 1) Per-class Accuracy
-        per_class_accuracy = []
-        for label in unique_labels:
-            total_class_samples = np.sum(global_labels == label)
-            correct_class_samples = np.sum((global_labels == label) & (global_preds == label))
-            if total_class_samples > 0:
-                acc = correct_class_samples / total_class_samples
-            else:
-                acc = 0.0
-            per_class_accuracy.append(acc)
+        # # per-class Accuracy and Recall
+        # unique_labels = np.unique(global_labels)
+        # # 1) Per-class Accuracy
+        # per_class_accuracy = []
+        # for label in unique_labels:
+        #     total_class_samples = np.sum(global_labels == label)
+        #     correct_class_samples = np.sum((global_labels == label) & (global_preds == label))
+        #     if total_class_samples > 0:
+        #         acc = correct_class_samples / total_class_samples
+        #     else:
+        #         acc = 0.0
+        #     per_class_accuracy.append(acc)
 
-        # 2) Per-class Recall
-        per_class_recall = recall_score(
-            global_labels,
-            global_preds,
-            labels=unique_labels,
-            average=None,
-            zero_division=0
-        )
+        # # 2) Per-class Recall
+        # per_class_recall = recall_score(
+        #     global_labels,
+        #     global_preds,
+        #     labels=unique_labels,
+        #     average=None,
+        #     zero_division=0
+        # )
 
         metrics = {
             'loss': val_loss,
@@ -274,10 +308,10 @@ def validate(model, loader, criterion, device, epoch, transform=None, writer=Non
             writer.add_scalar('Val/Epoch_Recall', val_recall, epoch)
             writer.add_scalar('Val/Epoch_F1', val_f1, epoch)
 
-            # per-class metrics
-            for i, cls_label in enumerate(unique_labels):
-                writer.add_scalar(f'Val/PerClassAccuracy/class_{cls_label}', per_class_accuracy[i], epoch)
-                writer.add_scalar(f'Val/PerClassRecall/class_{cls_label}', per_class_recall[i], epoch)
+            # # per-class metrics
+            # for i, cls_label in enumerate(unique_labels):
+            #     writer.add_scalar(f'Val/PerClassAccuracy/class_{cls_label}', per_class_accuracy[i], epoch)
+            #     writer.add_scalar(f'Val/PerClassRecall/class_{cls_label}', per_class_recall[i], epoch)
 
         return metrics
     return None
@@ -291,6 +325,7 @@ def main_worker(args):
         backend="nccl",
         world_size=world_size,
         rank=rank,
+        timeout=timedelta(seconds=1800)
     )
     print(f"Rank {rank} after init_process_group()!")
 
@@ -313,12 +348,14 @@ def main_worker(args):
         csv_path=r"/user/work/bw19062/Individual_Project/dataset/metadata/nacti_metadata_balanced.csv",
     )
 
+    total_len = len(dataset)
     train_size = int(0.8 * len(dataset))
     val_size = int(0.1 * len(dataset))
-    test_size = len(dataset) - train_size - val_size
-    train_dataset, val_dataset, test_dataset = random_split(
-        dataset, [train_size, val_size, test_size]
-    )
+    test_size  = total_len - train_size - val_size
+    g = torch.Generator()
+    g.manual_seed(0)
+    train_dataset, val_dataset, _ = random_split(
+        dataset, [train_size, val_size, test_size], generator=g)
 
     # DistributedSampler
     train_sampler = DistributedSampler(
@@ -344,7 +381,7 @@ def main_worker(args):
         worker_init_fn=worker_init,
         pin_memory=torch.cuda.is_available(),
         shuffle=(train_sampler is None),
-        collate_fn=pil_collect_fn
+        collate_fn=pil_collect_fn,
     )
 
     val_loader = DataLoader(
@@ -355,7 +392,7 @@ def main_worker(args):
         worker_init_fn=worker_init,
         pin_memory=torch.cuda.is_available(),
         shuffle=(val_sampler is None),
-        collate_fn=pil_collect_fn
+        collate_fn=pil_collect_fn,
     )
 
     print("dataloader initialised")
@@ -363,7 +400,7 @@ def main_worker(args):
     # ---- model ----
     model = pw_classification.AI4GAmazonRainforest(device=device)
     num_features = model.net.classifier.in_features
-    model.net.classifier = torch.nn.Linear(num_features, 47)
+    model.net.classifier = torch.nn.Linear(num_features, 49)
     model.to(device)
 
     if world_size > 1:
@@ -391,6 +428,9 @@ def main_worker(args):
     non_improvement = 0
 
     for epoch in range(1, args.epochs + 1):
+        train_sampler.set_epoch(epoch)
+        val_sampler.set_epoch(epoch)
+
         torch.cuda.synchronize()
 
         # training phase
@@ -444,19 +484,23 @@ def main_worker(args):
             if current_recall > best_recall + args.delta:
                 best_recall = current_recall
                 non_improvement = 0
-                torch.save(model.state_dict(), "./model/ddp/best_model_ddp.pth")
+                torch.save(model.module.state_dict(), "./model/ddp/best_model_ddp.pth")
                 print(f"Best model saved with recall: {best_recall:.4f}, at epoch: {epoch}")
             else:
                 non_improvement += 1
                 print(f"No improvement in recall for {non_improvement} / {args.patience} epochs.")
+            stop = 1
 
-            stop = 1 if non_improvement >= args.patience else 0
-            stop_tensor = torch.tensor([stop], device=device)
-            dist.broadcast(stop_tensor, 0)
+        else:
+            stop = 0
 
-            if stop_tensor.item() == 1:
+        stop_tensor = torch.tensor([stop], device=device)
+        dist.broadcast(stop_tensor, 0)
+
+        if stop_tensor.item() == 1:
+            if rank == 0:
                 print("Early stopping at epoch:", epoch)
-                break
+            break
 
     if rank == 0:
         torch.save(model.state_dict(), "./model/ddp/final_model_ddp.pth")
@@ -469,7 +513,7 @@ def main_worker(args):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', type=int, default=1000, help="Number of total epochs to run")
-    parser.add_argument('--batch_size', type=int, default=32, help="Batch size per process")
+    parser.add_argument('--batch_size', type=int, default=16, help="Batch size per process")
     parser.add_argument('--lr', type=float, default=1e-4, help="Learning rate")
     parser.add_argument('--patience', type=int, default=5, help="Patience for early stopping")
     parser.add_argument('--delta', type=float, default=1e-4, help="Minimal change for early stopping")
