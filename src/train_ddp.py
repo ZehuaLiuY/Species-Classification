@@ -476,11 +476,6 @@ def main_worker(args):
             # --- early stopping ---
             current_recall = val_metrics['recall']
 
-            # Save best model based on recall
-            # if the current recall is greater than the best recall + delta. continue training
-            # else if the current recall is less than the best recall + delta, increment non_improvement
-            # if non_improvement >= patience, stop training
-
             if current_recall > best_recall + args.delta:
                 best_recall = current_recall
                 non_improvement = 0
@@ -489,18 +484,21 @@ def main_worker(args):
             else:
                 non_improvement += 1
                 print(f"No improvement in recall for {non_improvement} / {args.patience} epochs.")
-            stop = 1
 
+            if non_improvement >= args.patience:
+                stop = 1
+            else:
+                stop = 0
         else:
             stop = 0
 
-        stop_tensor = torch.tensor([stop], device=device)
-        dist.broadcast(stop_tensor, 0)
+            stop_tensor = torch.tensor([stop], device=device)
+            dist.broadcast(stop_tensor, 0)
 
-        if stop_tensor.item() == 1:
-            if rank == 0:
-                print("Early stopping at epoch:", epoch)
-            break
+            if stop_tensor.item() == 1:
+                if rank == 0:
+                    print("Early stopping at epoch:", epoch)
+                break
 
     if rank == 0:
         torch.save(model.state_dict(), "./model/ddp/final_model_ddp.pth")
