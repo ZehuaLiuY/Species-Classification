@@ -40,14 +40,16 @@ class NACTIAnnotationDataset(Dataset):
             unique_cnames = csv_data['common_name'].dropna().unique().tolist()
 
             # delete the empty string if the allow_empty is False
-            if not allow_empty:
+            if not allow_empty and 'empty' in unique_cnames:
                 unique_cnames.remove('empty')
+
 
             unique_cnames = sorted(unique_cnames)
             # Build a dictionary mapping each unique common_name to an integer
             self.common_name_to_id = {cname: idx for idx, cname in enumerate(unique_cnames)}
             print(f"[NACTIAnnotationDataset] Found {len(unique_cnames)} unique common names.")
             # print(f"[NACTIAnnotationDataset] Common names: {unique_cnames}")
+            print(self.common_name_to_id)
 
             # Also store id -> common_name for each row
             for _, row in csv_data.iterrows():

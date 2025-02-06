@@ -6,6 +6,22 @@ from torch.utils.data import random_split, DataLoader
 from sklearn.metrics import precision_score, recall_score, f1_score
 from dataset import NACTIAnnotationDataset
 import argparse
+import json
+Class_names = {'american black bear': 0, 'american marten': 1, 'american red squirrel': 2,
+               'black-tailed jackrabbit': 3, 'bobcat': 4, 'california ground squirrel': 5,
+               'california quail': 6, 'cougar': 7, 'coyote': 8, 'dark-eyed junco': 9,
+               'domestic cow': 10, 'domestic dog': 11, 'dusky grouse': 12,
+               'eastern gray squirrel': 13, 'elk': 14, 'ermine': 15, 'european badger': 16,
+               'gray fox': 17, 'gray jay': 18, 'horse': 19, 'house wren': 20,
+               'long-tailed weasel': 21, 'moose': 22, 'mule deer': 23, 'north american porcupine': 24,
+               'raccoon': 25, 'red deer': 26, 'red fox': 27, 'snowshoe hare': 28, "steller's jay": 29,
+               'striped skunk': 30, 'unidentified accipitrid': 31, 'unidentified bird': 32,
+               'unidentified chipmunk': 33, 'unidentified corvus': 34, 'unidentified deer': 35,
+               'unidentified deer mouse': 36, 'unidentified mouse': 37, 'unidentified pack rat': 38,
+               'unidentified pocket gopher': 39, 'unidentified rabbit': 40, 'vehicle': 41, 'virginia opossum': 42,
+               'wild boar': 43, 'wild turkey': 44, 'yellow-bellied marmot': 45
+               }
+
 
 parser = argparse.ArgumentParser(
     description="Test the fine tuned model on the NACTI dataset.",
@@ -20,7 +36,7 @@ parser.add_argument(
 
 parser.add_argument(
     "--train_type",
-    choices=['single', 'ddp'], default='single',
+    choices=['single', 'ddp'], default='ddp',
     help="Choose training type: 'single' for single GPU or 'ddp' for DistributedDataParallel"
 )
 
@@ -83,6 +99,7 @@ def test_model(model, loader, criterion, device, transform=None):
 
     all_test_preds = []
     all_test_labels = []
+    results = []
 
     with torch.no_grad():
         for batch_idx, (images, targets) in enumerate(tqdm(loader, desc="Testing")):
@@ -136,6 +153,18 @@ def test_model(model, loader, criterion, device, transform=None):
             test_running_loss += batch_loss
             test_running_total += batch_num
             _, predicted = torch.max(outputs, dim=1)
+            # write the predicted labels and ground truth labels into a csv file
+            index_to_class = {v: k for k, v in Class_names.items()}
+            predicted_class_names = [index_to_class[p.item()] for p in predicted]
+            gt_class_names = [index_to_class[l.item()] for l in batch_labels]
+
+
+            for pred_name, gt_name in zip(predicted_class_names, gt_class_names):
+                results.append({
+                    'predicted_class': pred_name,
+                    'ground_truth_class': gt_name
+                })
+
             test_correct += (predicted == batch_labels).sum().item()
             test_total += batch_labels.size(0)
 
@@ -145,9 +174,9 @@ def test_model(model, loader, criterion, device, transform=None):
     test_loss = test_running_loss / max(len(loader), 1)
     test_acc = test_correct / max(test_total, 1)
 
-    test_precision = precision_score(all_test_labels, all_test_preds, average='macro', zero_division=0)
-    test_recall = recall_score(all_test_labels, all_test_preds, average='macro', zero_division=0)
-    test_f1 = f1_score(all_test_labels, all_test_preds, average='macro', zero_division=0)
+    test_precision = precision_score(all_test_labels, all_test_preds, average='weighted', zero_division=0)
+    test_recall = recall_score(all_test_labels, all_test_preds, average='weighted', zero_division=0)
+    test_f1 = f1_score(all_test_labels, all_test_preds, average='weighted', zero_division=0)
 
     # calculate per-class accuracy
     unique_labels = sorted(list(set(all_test_labels)))
@@ -181,6 +210,10 @@ def test_model(model, loader, criterion, device, transform=None):
 
     for class_idx, r in enumerate(test_recall_per_class):
         print(f"Class {class_idx}: {r:.4f}")
+
+    # json file
+    with open("../test_result/results_weighted.json", "w", encoding="utf-8") as f:
+        json.dump(results, f, indent=4, ensure_ascii=False)
 
     metrics = {
         'loss': test_loss,
@@ -230,12 +263,17 @@ def main(args):
         csv_path=r"F:\DATASET\NACTI\meta\nacti_metadata_part0.csv",
     )
 
+    # set a random seed for reproducibility
+    g = torch.Generator().manual_seed(42)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
     # Split dataset into train, val, test
     train_size = int(0.8 * len(dataset))
     val_size = int(0.1 * len(dataset))
     test_size = len(dataset) - train_size - val_size
     train_dataset, val_dataset, test_dataset = random_split(
-        dataset, [train_size, val_size, test_size]
+        dataset, [train_size, val_size, test_size], g
     )
 
     test_loader = DataLoader(
@@ -256,7 +294,7 @@ def main(args):
           f"F1: {test_metrics['f1']:.4f}")
 
     # write the test metrics into a txt file
-    with open("test_results.txt", "w", encoding="utf-8") as f:
+    with open("../test_result/test_results_weighted.txt", "w", encoding="utf-8") as f:
         f.write("==== Test Results ====\n")
         f.write(f"Loss: {test_metrics['loss']:.4f}\n")
         f.write(f"Acc: {test_metrics['acc']:.4f}\n")
@@ -272,7 +310,7 @@ def main(args):
         for idx, cls_label in enumerate(test_metrics['classes_order']):
             f.write(f"  Class {cls_label}: {test_metrics['per_class_accuracy'][idx]:.4f}\n")
 
-    print("Test results saved to test_results.txt, test done.")
+    print("Test results saved, test done.")
 
 if __name__ == "__main__":
     main(parser.parse_args())
