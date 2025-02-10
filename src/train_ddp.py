@@ -494,24 +494,6 @@ def main_worker(args):
                 non_improvement = 0
                 torch.save(model.module.state_dict(), "./model/ddp/best_model_ddp.pth")
                 print(f"Best model saved with recall: {best_recall:.4f}, at epoch: {epoch}")
-            else:
-                non_improvement += 1
-                print(f"No improvement in recall for {non_improvement} / {args.patience} epochs.")
-
-            if non_improvement >= args.patience:
-                stop = 1
-            else:
-                stop = 0
-        else:
-            stop = 0
-
-            stop_tensor = torch.tensor([stop], device=device)
-            dist.broadcast(stop_tensor, 0)
-
-            if stop_tensor.item() == 1:
-                if rank == 0:
-                    print("Early stopping at epoch:", epoch)
-                break
 
     if rank == 0:
         torch.save(model.state_dict(), "./model/ddp/final_model_ddp.pth")
