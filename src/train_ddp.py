@@ -478,6 +478,8 @@ def main_worker(args):
             transform=transform,
             writer=writer
         )
+        # Synchronize all processes before going to the next epoch
+        dist.barrier()
 
         if rank == 0:
             print(f"[Validation] Loss: {val_metrics['loss']:.4f} | "
@@ -494,6 +496,24 @@ def main_worker(args):
                 non_improvement = 0
                 torch.save(model.module.state_dict(), "./model/ddp/best_model_ddp.pth")
                 print(f"Best model saved with recall: {best_recall:.4f}, at epoch: {epoch}")
+            else:
+                non_improvement += 1
+                print(f"No improvement for {non_improvement} consecutive epochs.")
+
+            if non_improvement >= args.patience:
+                print(f"Early stopping triggered after {epoch} epochs without improvement.")
+                early_stop_flag = 1
+            else:
+                early_stop_flag = 0
+
+        early_stop_tensor = torch.tensor(early_stop_flag, dtype=torch.int, device=device)
+        dist.broadcast(early_stop_tensor, src=0)
+        dist.barrier()
+        if early_stop_tensor.item() == 1:
+            if rank == 0:
+                print(f"Early stopping triggered after {epoch} epochs without improvement.")
+            break
+
 
     if rank == 0:
         torch.save(model.state_dict(), "./model/ddp/final_model_ddp.pth")
