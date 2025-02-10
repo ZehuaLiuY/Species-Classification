@@ -14,7 +14,7 @@ from tqdm import tqdm
 import numpy as np
 from PytorchWildlife.models import classification as pw_classification
 from datetime import timedelta
-
+from collections import Counter
 from dataset import NACTIAnnotationDataset
 
 world_size = int(os.getenv('SLURM_NTASKS'))
@@ -414,8 +414,21 @@ def main_worker(args):
     optimizer = optim.AdamW(model.parameters(), lr=args.lr)
 
     # print(model)
+    # weighted cross entropy loss
+    all_labels = []
+    for i in range(len(train_dataset)):
+        _, targets = train_dataset[i]
+        all_labels.extend(targets["labels"].tolist())
+    cls_counts = Counter(all_labels)
+    weights = []
+    for i in range(49):
+        weights.append(1.0 / (cls_counts[i] + 1e-6))
+    weights = np.array(weights, dtype=np.float32)
+    weights = weights / weights.sum() * 49
+    weight = torch.tensor(weights, device=device)
 
-    criterion = torch.nn.CrossEntropyLoss()
+
+    criterion = torch.nn.CrossEntropyLoss(weight)
 
     # Create a SummaryWriter only on rank 0, so only the main process logs.
     if rank == 0:
