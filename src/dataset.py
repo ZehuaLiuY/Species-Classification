@@ -183,8 +183,8 @@ class NACTIAnnotationDataset(Dataset):
 # # Testing the dataset
 # dataset = NACTIAnnotationDataset(
 #     image_dir=r"F:\DATASET\NACTI\images",
-#     json_path=r"E:\result\json\detection\part0output.json",
-#     csv_path=r"F:\DATASET\NACTI\meta\nacti_metadata_part0.csv"
+#     json_path=r"E:\result\json\detection\detection_filtered.json",
+#     csv_path=r"F:/DATASET/NACTI/meta/nacti_metadata_balanced.csv"
 # )
 #
 # # Check the length of the dataset

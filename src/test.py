@@ -7,19 +7,22 @@ from sklearn.metrics import precision_score, recall_score, f1_score
 from dataset import NACTIAnnotationDataset
 import argparse
 import json
-Class_names = {'american black bear': 0, 'american marten': 1, 'american red squirrel': 2,
-               'black-tailed jackrabbit': 3, 'bobcat': 4, 'california ground squirrel': 5,
-               'california quail': 6, 'cougar': 7, 'coyote': 8, 'dark-eyed junco': 9,
-               'domestic cow': 10, 'domestic dog': 11, 'dusky grouse': 12,
-               'eastern gray squirrel': 13, 'elk': 14, 'ermine': 15, 'european badger': 16,
-               'gray fox': 17, 'gray jay': 18, 'horse': 19, 'house wren': 20,
-               'long-tailed weasel': 21, 'moose': 22, 'mule deer': 23, 'north american porcupine': 24,
-               'raccoon': 25, 'red deer': 26, 'red fox': 27, 'snowshoe hare': 28, "steller's jay": 29,
-               'striped skunk': 30, 'unidentified accipitrid': 31, 'unidentified bird': 32,
-               'unidentified chipmunk': 33, 'unidentified corvus': 34, 'unidentified deer': 35,
-               'unidentified deer mouse': 36, 'unidentified mouse': 37, 'unidentified pack rat': 38,
-               'unidentified pocket gopher': 39, 'unidentified rabbit': 40, 'vehicle': 41, 'virginia opossum': 42,
-               'wild boar': 43, 'wild turkey': 44, 'yellow-bellied marmot': 45
+Class_names = {'american black bear': 0, 'american marten': 1, 'american red squirrel': 2, 'black-tailed jackrabbit': 3,
+               'bobcat': 4, 'california ground squirrel': 5, 'california quail': 6,
+               'cougar': 7, 'coyote': 8, 'dark-eyed junco': 9, 'domestic cow': 10,
+               'domestic dog': 11, 'donkey': 12, 'dusky grouse': 13,
+               'eastern gray squirrel': 14, 'elk': 15, 'ermine': 16,
+               'european badger': 17, 'gray fox': 18, 'gray jay': 19, 'horse': 20,
+               'house wren': 21, 'long-tailed weasel': 22, 'moose': 23,
+               'mule deer': 24, 'nine-banded armadillo': 25,
+               'north american porcupine': 26, 'north american river otter': 27,
+               'raccoon': 28, 'red deer': 29, 'red fox': 30, 'snowshoe hare': 31,
+               "steller's jay": 32, 'striped skunk': 33, 'unidentified accipitrid': 34,
+               'unidentified bird': 35, 'unidentified chipmunk': 36, 'unidentified corvus': 37,
+               'unidentified deer': 38, 'unidentified deer mouse': 39, 'unidentified mouse': 40,
+               'unidentified pack rat': 41, 'unidentified pocket gopher': 42,
+               'unidentified rabbit': 43, 'vehicle': 44, 'virginia opossum': 45,
+               'wild boar': 46, 'wild turkey': 47, 'yellow-bellied marmot': 48
                }
 
 
@@ -236,7 +239,7 @@ def main(args):
     model = pw_classification.AI4GAmazonRainforest(device=device)
 
     num_features = model.net.classifier.in_features
-    model.net.classifier = torch.nn.Linear(num_features, 46)
+    model.net.classifier = torch.nn.Linear(num_features, 49)
 
     checkpoint = torch.load(args.model_path, map_location=device)
     state_dict = checkpoint.get("model", checkpoint)
@@ -259,8 +262,8 @@ def main(args):
 
     dataset = NACTIAnnotationDataset(
         image_dir=r"F:\DATASET\NACTI\images",
-        json_path=r"E:\result\json\detection\part0output.json",
-        csv_path=r"F:\DATASET\NACTI\meta\nacti_metadata_part0.csv",
+        json_path=r"E:\result\json\detection\detection_filtered.json",
+        csv_path=r"F:/DATASET/NACTI/meta/nacti_metadata_balanced.csv"
     )
 
     # set a random seed for reproducibility

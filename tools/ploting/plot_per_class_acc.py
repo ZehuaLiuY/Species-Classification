@@ -3,9 +3,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 
-macro_path = r'G:\Code\github\Project-Prep\test_result\results_macro.json'
-micro_path = r'G:\Code\github\Project-Prep\test_result\results_micro.json'
-weighted_path = r'G:\Code\github\Project-Prep\test_result\results_weighted.json'
+macro_path = r'/test_result/46/results_macro.json'
+micro_path = r'/test_result/46/results_micro.json'
+weighted_path = r'/test_result/46/results_weighted.json'
 
 def load_json(filepath):
     with open(filepath, "r", encoding="utf-8") as f:
