@@ -7,6 +7,7 @@ from sklearn.metrics import precision_score, recall_score, f1_score
 from dataset import NACTIAnnotationDataset
 import argparse
 import json
+import numpy as np
 Class_names = {'american black bear': 0, 'american marten': 1, 'american red squirrel': 2, 'black-tailed jackrabbit': 3,
                'bobcat': 4, 'california ground squirrel': 5, 'california quail': 6,
                'cougar': 7, 'coyote': 8, 'dark-eyed junco': 9, 'domestic cow': 10,
@@ -176,6 +177,14 @@ def test_model(model, loader, criterion, device, transform=None):
 
     test_loss = test_running_loss / max(len(loader), 1)
     test_acc = test_correct / max(test_total, 1)
+    class_prevalence = np.zeros(49, dtype=int)
+    class_bias = np.zeros(49, dtype=int)
+    for label in all_test_labels:
+        class_prevalence[label] += 1
+    for pred in all_test_preds:
+        class_bias[pred] += 1
+    print(f"Class prevalence: {class_prevalence}")
+    print(f"Class bias: {class_bias}")
 
     test_precision = precision_score(all_test_labels, all_test_preds, average='weighted', zero_division=0)
     test_recall = recall_score(all_test_labels, all_test_preds, average='weighted', zero_division=0)
@@ -197,6 +206,14 @@ def test_model(model, loader, criterion, device, transform=None):
         else:
             acc = 0.0
         per_class_accuracy.append(acc)
+
+    test_precision_per_class = precision_score(
+        all_test_labels,
+        all_test_preds,
+        labels = list(set(all_test_labels)),
+        average=None,
+        zero_division=0
+    )
 
     test_recall_per_class = recall_score(
         all_test_labels,
@@ -224,6 +241,7 @@ def test_model(model, loader, criterion, device, transform=None):
         'precision': test_precision,
         'recall': test_recall,
         'f1': test_f1,
+        'per_class_precision': test_precision_per_class,
         'per_class_recall': test_recall_per_class,
         'per_class_accuracy': per_class_accuracy,
         'classes_order': unique_labels
@@ -304,6 +322,10 @@ def main(args):
         f.write(f"Precision: {test_metrics['precision']:.4f}\n")
         f.write(f"Recall: {test_metrics['recall']:.4f}\n")
         f.write(f"F1: {test_metrics['f1']:.4f}\n\n")
+
+        f.write("Per-class Precision:\n")
+        for idx, cls_label in enumerate(test_metrics['classes_order']):
+            f.write(f"  Class {cls_label}: {test_metrics['per_class_precision'][idx]:.4f}\n")
 
         f.write("Per-class Recall:\n")
         for idx, cls_label in enumerate(test_metrics['classes_order']):
