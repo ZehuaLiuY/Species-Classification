@@ -8,7 +8,7 @@ from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import precision_score, recall_score, f1_score, average_precision_score
 from dataset import NACTIAnnotationDataset
 import numpy as np
-
+from lossFunction import FocalLoss
 def collate_fn_remove_none(batch):
     """
     Custom collate function that removes None samples.
@@ -358,11 +358,11 @@ if __name__ == "__main__":
 
     model.to(device)
     optimizer = optim.AdamW(model.parameters(), lr=0.0001)
-    criterion = torch.nn.CrossEntropyLoss() # default mode is mean
+    criterion = FocalLoss(alpha=1.0, gamma=2.0, reduction='mean')
     writer = SummaryWriter()
     num_epochs = 1000
     global_step = 0
-    patience = 5
+    patience = 10
     no_improvements = 0
     delta = 0.005
 
@@ -397,7 +397,7 @@ if __name__ == "__main__":
         # save the best model
         if val_metrics['f1'] > best_f1 + delta:
             best_f1 = val_metrics['f1']
-            torch.save(model.state_dict(), "best_model.pth")
+            torch.save(model.state_dict(), "models/best_model.pth")
             print(f"Best model saved with F1: {best_f1:.4f}, in Epoch: {epoch}")
             no_improvements = 0
         else:
@@ -407,5 +407,5 @@ if __name__ == "__main__":
                 break
 
     # save final the model
-    torch.save(model.state_dict(), "final_model.pth")
+    torch.save(model.state_dict(), "models/final_model.pth")
     print("Model saved.")
