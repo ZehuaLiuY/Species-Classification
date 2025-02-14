@@ -3,29 +3,24 @@ from torchvision import transforms
 from PytorchWildlife.models import classification as pw_classification
 from tqdm import tqdm
 from torch.utils.data import random_split, DataLoader
-from sklearn.metrics import precision_score, recall_score, f1_score
+from sklearn.metrics import precision_score, recall_score, f1_score, precision_recall_fscore_support
 from dataset import NACTIAnnotationDataset
 import argparse
 import json
 import numpy as np
-Class_names = {'american black bear': 0, 'american marten': 1, 'american red squirrel': 2, 'black-tailed jackrabbit': 3,
-               'bobcat': 4, 'california ground squirrel': 5, 'california quail': 6,
-               'cougar': 7, 'coyote': 8, 'dark-eyed junco': 9, 'domestic cow': 10,
-               'domestic dog': 11, 'donkey': 12, 'dusky grouse': 13,
-               'eastern gray squirrel': 14, 'elk': 15, 'ermine': 16,
-               'european badger': 17, 'gray fox': 18, 'gray jay': 19, 'horse': 20,
-               'house wren': 21, 'long-tailed weasel': 22, 'moose': 23,
-               'mule deer': 24, 'nine-banded armadillo': 25,
-               'north american porcupine': 26, 'north american river otter': 27,
-               'raccoon': 28, 'red deer': 29, 'red fox': 30, 'snowshoe hare': 31,
-               "steller's jay": 32, 'striped skunk': 33, 'unidentified accipitrid': 34,
-               'unidentified bird': 35, 'unidentified chipmunk': 36, 'unidentified corvus': 37,
-               'unidentified deer': 38, 'unidentified deer mouse': 39, 'unidentified mouse': 40,
-               'unidentified pack rat': 41, 'unidentified pocket gopher': 42,
-               'unidentified rabbit': 43, 'vehicle': 44, 'virginia opossum': 45,
-               'wild boar': 46, 'wild turkey': 47, 'yellow-bellied marmot': 48
-               }
 
+Class_names = {
+    0: 'american black bear', 1: 'american marten', 2: 'american red squirrel', 3: 'black-tailed jackrabbit',
+    4: 'bobcat', 5: 'california ground squirrel', 6: 'california quail', 7: 'cougar', 8: 'coyote', 9: 'dark-eyed junco',
+    10: 'domestic cow', 11: 'domestic dog', 12: 'donkey', 13: 'dusky grouse', 14: 'eastern gray squirrel',
+    15: 'elk', 16: 'ermine', 17: 'european badger', 18: 'gray fox', 19: 'gray jay', 20: 'horse',
+    21: 'house wren', 22: 'long-tailed weasel', 23: 'moose', 24: 'mule deer', 25: 'nine-banded armadillo', 26: 'north american porcupine',
+    27: 'north american river otter', 28: 'raccoon', 29: 'red deer', 30: 'red fox', 31: 'snowshoe hare',
+    32: "steller's jay", 33: 'striped skunk', 34: 'unidentified accipitrid', 35: 'unidentified bird',
+    36: 'unidentified chipmunk', 37: 'unidentified corvus', 38: 'unidentified deer', 39: 'unidentified deer mouse',
+    40: 'unidentified mouse', 41: 'unidentified pack rat', 42: 'unidentified pocket gopher', 43: 'unidentified rabbit',
+    44: 'vehicle', 45: 'virginia opossum', 46: 'wild boar', 47: 'wild turkey', 48: 'yellow-bellied marmot'
+}
 
 parser = argparse.ArgumentParser(
     description="Test the fine tuned model on the NACTI dataset.",
@@ -158,9 +153,8 @@ def test_model(model, loader, criterion, device, transform=None):
             test_running_total += batch_num
             _, predicted = torch.max(outputs, dim=1)
             # write the predicted labels and ground truth labels into a csv file
-            index_to_class = {v: k for k, v in Class_names.items()}
-            predicted_class_names = [index_to_class[p.item()] for p in predicted]
-            gt_class_names = [index_to_class[l.item()] for l in batch_labels]
+            predicted_class_names = [Class_names[p.item()] for p in predicted]
+            gt_class_names = [Class_names[l.item()] for l in batch_labels]
 
 
             for pred_name, gt_name in zip(predicted_class_names, gt_class_names):
@@ -177,6 +171,9 @@ def test_model(model, loader, criterion, device, transform=None):
 
     test_loss = test_running_loss / max(len(loader), 1)
     test_acc = test_correct / max(test_total, 1)
+
+    # class_lrevalence is the number of samples in each class
+    # class_bias is the number of predictions in each class
     class_prevalence = np.zeros(49, dtype=int)
     class_bias = np.zeros(49, dtype=int)
     for label in all_test_labels:
@@ -190,50 +187,27 @@ def test_model(model, loader, criterion, device, transform=None):
     test_recall = recall_score(all_test_labels, all_test_preds, average='weighted', zero_division=0)
     test_f1 = f1_score(all_test_labels, all_test_preds, average='weighted', zero_division=0)
 
-    # calculate per-class accuracy
-    unique_labels = sorted(list(set(all_test_labels)))
-    per_class_accuracy = []
+    per_class_prec, per_class_rec, per_class_f1, support = precision_recall_fscore_support(
+        all_test_labels, all_test_preds, labels=range(49), zero_division=0
+    )
 
-    for label in unique_labels:
-        total_class_samples = sum([1 for l in all_test_labels if l == label])
-        correct_class_samples = sum(
-            1
-            for pred, gt in zip(all_test_preds, all_test_labels)
-            if (gt == label and pred == label)
-        )
-        if total_class_samples > 0:
-            acc = correct_class_samples / total_class_samples
+    # True positives for each class
+    true_positives = np.zeros(49, dtype=int)
+    all_test_labels_np = np.array(all_test_labels)
+    all_test_preds_np = np.array(all_test_preds)
+    for i in range(49):
+        true_positives[i] = np.sum((all_test_labels_np == i) & (all_test_preds_np == i))
+
+    # Accuracy for each class, per_class_accuracy[i] = true_positives[i] / class_prevalence[i]
+    per_class_accuracy = np.zeros(49, dtype=float)
+    for i in range(49):
+        if class_prevalence[i] > 0:
+            per_class_accuracy[i] = true_positives[i] / class_prevalence[i]
         else:
-            acc = 0.0
-        per_class_accuracy.append(acc)
+            per_class_accuracy[i] = 0.0
 
-    test_precision_per_class = precision_score(
-        all_test_labels,
-        all_test_preds,
-        labels = list(set(all_test_labels)),
-        average=None,
-        zero_division=0
-    )
-
-    test_recall_per_class = recall_score(
-        all_test_labels,
-        all_test_preds,
-        labels = list(set(all_test_labels)),
-        average=None,
-        zero_division=0
-    )
-
-    print("Per-class accuracy:")
-    for idx, acc in enumerate(per_class_accuracy):
-        print(f"  Class {unique_labels[idx]}: {acc:.4f}")
-
-
-    for class_idx, r in enumerate(test_recall_per_class):
-        print(f"Class {class_idx}: {r:.4f}")
-
-    # json file
-    with open("../test_result/results_weighted.json", "w", encoding="utf-8") as f:
-        json.dump(results, f, indent=4, ensure_ascii=False)
+    # Overall macro F1 score
+    overall_macro_f1 = f1_score(all_test_labels, all_test_preds, average='macro', zero_division=0)
 
     metrics = {
         'loss': test_loss,
@@ -241,11 +215,21 @@ def test_model(model, loader, criterion, device, transform=None):
         'precision': test_precision,
         'recall': test_recall,
         'f1': test_f1,
-        'per_class_precision': test_precision_per_class,
-        'per_class_recall': test_recall_per_class,
-        'per_class_accuracy': per_class_accuracy,
-        'classes_order': unique_labels
+        'per_class_precision': per_class_prec.tolist(),
+        'per_class_recall': per_class_rec.tolist(),
+        'per_class_f1': per_class_f1.tolist(),
+        'per_class_accuracy': per_class_accuracy.tolist(),
+        'true_positives': true_positives.tolist(),
+        'class_bias': class_bias.tolist(),
+        'class_prevalence': class_prevalence.tolist(),
+        'overall_macro_f1': overall_macro_f1,
+        'classes_order': list(range(49))
     }
+
+    # save the results into a json file
+    with open("../test_result/results_weighted.json", "w", encoding="utf-8") as f:
+        json.dump(results, f, indent=4, ensure_ascii=False)
+
     return metrics
 
 def main(args):
@@ -314,26 +298,26 @@ def main(args):
           f"Recall: {test_metrics['recall']:.4f} | "
           f"F1: {test_metrics['f1']:.4f}")
 
-    # write the test metrics into a txt file
-    with open("../test_result/test_results_weighted.txt", "w", encoding="utf-8") as f:
+    # write the test metrics into a txt file with detailed per-class metrics
+    with open("../test_result/test_results_weighted_49.txt", "w", encoding="utf-8") as f:
         f.write("==== Test Results ====\n")
         f.write(f"Loss: {test_metrics['loss']:.4f}\n")
-        f.write(f"Acc: {test_metrics['acc']:.4f}\n")
-        f.write(f"Precision: {test_metrics['precision']:.4f}\n")
-        f.write(f"Recall: {test_metrics['recall']:.4f}\n")
-        f.write(f"F1: {test_metrics['f1']:.4f}\n\n")
+        f.write(f"Overall Accuracy: {test_metrics['acc']:.4f}\n")
+        f.write(f"Weighted Precision: {test_metrics['precision']:.4f}\n")
+        f.write(f"Weighted Recall: {test_metrics['recall']:.4f}\n")
+        f.write(f"Weighted F1: {test_metrics['f1']:.4f}\n")
+        f.write(f"Overall Macro F1: {test_metrics['overall_macro_f1']:.4f}\n\n")
 
-        f.write("Per-class Precision:\n")
-        for idx, cls_label in enumerate(test_metrics['classes_order']):
-            f.write(f"  Class {cls_label}: {test_metrics['per_class_precision'][idx]:.4f}\n")
-
-        f.write("Per-class Recall:\n")
-        for idx, cls_label in enumerate(test_metrics['classes_order']):
-            f.write(f"  Class {cls_label}: {test_metrics['per_class_recall'][idx]:.4f}\n")
-
-        f.write("\nPer-class Accuracy:\n")
-        for idx, cls_label in enumerate(test_metrics['classes_order']):
-            f.write(f"  Class {cls_label}: {test_metrics['per_class_accuracy'][idx]:.4f}\n")
+        f.write("=== Detailed Per-Class Metrics ===\n")
+        f.write("Class\t\tPrecision\tTrue Positives\tClass Bias\tRecall\t\tPrevalence\tF1 Score\n")
+        for i in range(49):
+            f.write(f"Class {i} ({Class_names[i]}):\t")
+            f.write(f"{test_metrics['per_class_precision'][i]:.4f}\t\t")
+            f.write(f"{test_metrics['true_positives'][i]}\t\t")
+            f.write(f"{test_metrics['class_bias'][i]}\t\t")
+            f.write(f"{test_metrics['per_class_recall'][i]:.4f}\t\t")
+            f.write(f"{test_metrics['class_prevalence'][i]}\t\t")
+            f.write(f"{test_metrics['per_class_f1'][i]:.4f}\n")
 
     print("Test results saved, test done.")
 

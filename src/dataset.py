@@ -49,7 +49,7 @@ class NACTIAnnotationDataset(Dataset):
             self.common_name_to_id = {cname: idx for idx, cname in enumerate(unique_cnames)}
             print(f"[NACTIAnnotationDataset] Found {len(unique_cnames)} unique common names.")
             # print(f"[NACTIAnnotationDataset] Common names: {unique_cnames}")
-            print(self.common_name_to_id)
+            # print(self.common_name_to_id)
 
             # Also store id -> common_name for each row
             for _, row in csv_data.iterrows():
