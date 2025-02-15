@@ -206,9 +206,6 @@ def test_model(model, loader, criterion, device, transform=None):
         else:
             per_class_accuracy[i] = 0.0
 
-    # Overall macro F1 score
-    overall_macro_f1 = f1_score(all_test_labels, all_test_preds, average='macro', zero_division=0)
-
     metrics = {
         'loss': test_loss,
         'acc': test_acc,
@@ -222,7 +219,6 @@ def test_model(model, loader, criterion, device, transform=None):
         'true_positives': true_positives.tolist(),
         'class_bias': class_bias.tolist(),
         'class_prevalence': class_prevalence.tolist(),
-        'overall_macro_f1': overall_macro_f1,
         'classes_order': list(range(49))
     }
 
@@ -303,23 +299,35 @@ def main(args):
         f.write("==== Test Results ====\n")
         f.write(f"Loss: {test_metrics['loss']:.4f}\n")
         f.write(f"Overall Accuracy: {test_metrics['acc']:.4f}\n")
-        f.write(f"Weighted Precision: {test_metrics['precision']:.4f}\n")
-        f.write(f"Weighted Recall: {test_metrics['recall']:.4f}\n")
-        f.write(f"Weighted F1: {test_metrics['f1']:.4f}\n")
-        f.write(f"Overall Macro F1: {test_metrics['overall_macro_f1']:.4f}\n\n")
+        f.write(f"Precision: {test_metrics['precision']:.4f}\n")
+        f.write(f"Recall: {test_metrics['recall']:.4f}\n")
+        f.write(f"F1: {test_metrics['f1']:.4f}\n")
 
         f.write("=== Detailed Per-Class Metrics ===\n")
-        f.write("Class\t\tPrecision\tTrue Positives\tClass Bias\tRecall\t\tPrevalence\tF1 Score\n")
-        for i in range(49):
-            f.write(f"Class {i} ({Class_names[i]}):\t")
-            f.write(f"{test_metrics['per_class_precision'][i]:.4f}\t\t")
-            f.write(f"{test_metrics['true_positives'][i]}\t\t")
-            f.write(f"{test_metrics['class_bias'][i]}\t\t")
-            f.write(f"{test_metrics['per_class_recall'][i]:.4f}\t\t")
-            f.write(f"{test_metrics['class_prevalence'][i]}\t\t")
-            f.write(f"{test_metrics['per_class_f1'][i]:.4f}\n")
+        header = (
+            f"{'Class':<35}"
+            f"{'Precision':>10}"
+            f"{'True Pos.':>10}"
+            f"{'Class Bias':>12}"
+            f"{'Recall':>10}"
+            f"{'Prevalence':>14}"
+            f"{'F1 Score':>10}\n"
+        )
+        f.write(header)
+        f.write("-" * (35 + 10 + 10 + 12 + 10 + 14 + 10) + "\n")
 
-    print("Test results saved, test done.")
+        for i in range(49):
+            class_name = f"Class {i} ({Class_names[i]})"
+            line = (
+                f"{class_name:<35}"
+                f"{test_metrics['per_class_precision'][i]:>10.4f}"
+                f"{test_metrics['true_positives'][i]:>10}"
+                f"{test_metrics['class_bias'][i]:>12}"
+                f"{test_metrics['per_class_recall'][i]:>10.4f}"
+                f"{test_metrics['class_prevalence'][i]:>14}"
+                f"{test_metrics['per_class_f1'][i]:>10.4f}\n"
+            )
+            f.write(line)
 
 if __name__ == "__main__":
     main(parser.parse_args())
