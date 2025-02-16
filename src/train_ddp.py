@@ -505,6 +505,8 @@ def main_worker(args):
                 early_stop_flag = 1
             else:
                 early_stop_flag = 0
+        else:
+            early_stop_flag = 0
 
         early_stop_tensor = torch.tensor(early_stop_flag, dtype=torch.int, device=device)
         dist.broadcast(early_stop_tensor, src=0)
