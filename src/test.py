@@ -8,6 +8,7 @@ from dataset import NACTIAnnotationDataset
 import argparse
 import json
 import numpy as np
+import matplotlib.pyplot as plt
 
 Class_names = {
     0: 'american black bear', 1: 'american marten', 2: 'american red squirrel', 3: 'black-tailed jackrabbit',
@@ -223,7 +224,7 @@ def test_model(model, loader, criterion, device, transform=None):
     }
 
     # save the results into a json file
-    with open("../test_result/results_weighted.json", "w", encoding="utf-8") as f:
+    with open("../test_result/forcal_loss_49.json", "w", encoding="utf-8") as f:
         json.dump(results, f, indent=4, ensure_ascii=False)
 
     return metrics
@@ -295,7 +296,7 @@ def main(args):
           f"F1: {test_metrics['f1']:.4f}")
 
     # write the test metrics into a txt file with detailed per-class metrics
-    with open("../test_result/test_results_weighted_49.txt", "w", encoding="utf-8") as f:
+    with open("../test_result/forcal_loss_49_49.txt", "w", encoding="utf-8") as f:
         f.write("==== Test Results ====\n")
         f.write(f"Loss: {test_metrics['loss']:.4f}\n")
         f.write(f"Overall Accuracy: {test_metrics['acc']:.4f}\n")
@@ -328,6 +329,20 @@ def main(args):
                 f"{test_metrics['per_class_f1'][i]:>10.4f}\n"
             )
             f.write(line)
+
+        # print a histogram of classes vs amount of img per calls
+
+        plt.figure(figsize=(15, 8))
+        plt.bar(range(49), test_metrics['class_prevalence'], tick_label=[Class_names[i] for i in range(49)])
+        plt.xticks(rotation=90)
+        plt.xlabel("Class")
+        plt.ylabel("Number of Images")
+        plt.title("Class Prevalence Histogram")
+        plt.tight_layout()
+        plt.savefig("../test_result/class_prevalence_histogram.png")
+        plt.close()
+
+
 
 if __name__ == "__main__":
     main(parser.parse_args())
