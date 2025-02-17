@@ -413,22 +413,36 @@ def main_worker(args):
 
     optimizer = optim.AdamW(model.parameters(), lr=args.lr)
 
+    # weight balancing cross entropy loss
     # print(model)
-    # weighted cross entropy loss
+    # 1. Collect all labels from the training dataset
     all_labels = []
     for i in range(len(train_dataset)):
         _, targets = train_dataset[i]
         all_labels.extend(targets["labels"].tolist())
+
+    # 2. Count the number of samples per class
     cls_counts = Counter(all_labels)
+    num_classes = 49  # Adjust this according to your number of classes
+
+    # 3. Calculate the effective number of samples and corresponding weights using Cui's method
+    beta = 0.9999  # A hyperparameter close to 1; can be tuned
     weights = []
-    for i in range(49):
-        weights.append(1.0 / (cls_counts[i] + 1e-6))
+    for i in range(num_classes):
+        count = cls_counts.get(i, 0)
+        # Compute effective number: E_n = (1 - beta^n) / (1 - beta)
+        effective_num = (1 - beta ** count) / (1 - beta) if count > 0 else 0.0
+        # Weight is defined as the inverse of the effective number of samples
+        weights.append(1.0 / (effective_num + 1e-6))
+
+    # 4. Normalize the weights so that the sum equals the number of classes (or 1, as needed)
     weights = np.array(weights, dtype=np.float32)
-    weights = weights / weights.sum() * 49
-    weight = torch.tensor(weights, device=device)
+    weights = weights / weights.sum() * num_classes
 
+    # 5. Convert the weights to a torch tensor and pass them to the CrossEntropyLoss
+    weight_tensor = torch.tensor(weights, device=device)
+    criterion = torch.nn.CrossEntropyLoss(weight=weight_tensor)
 
-    criterion = torch.nn.CrossEntropyLoss(weight)
 
     # Create a SummaryWriter only on rank 0, so only the main process logs.
     if rank == 0:
@@ -518,7 +532,7 @@ def main_worker(args):
 
 
     if rank == 0:
-        torch.save(model.state_dict(), "./model/ddp/final_model_ddp.pth")
+        torch.save(model.module.state_dict(), "./model/ddp/final_model_ddp.pth")
         print("Final model saved.")
         writer.close()  # Close the writer
 
