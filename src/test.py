@@ -1,8 +1,9 @@
 import torch
+from sklearn.model_selection import StratifiedShuffleSplit
 from torchvision import transforms
 from PytorchWildlife.models import classification as pw_classification
 from tqdm import tqdm
-from torch.utils.data import random_split, DataLoader
+from torch.utils.data import random_split, DataLoader, Subset
 from sklearn.metrics import precision_score, recall_score, f1_score, precision_recall_fscore_support
 from dataset import NACTIAnnotationDataset
 import argparse
@@ -265,18 +266,18 @@ def main(args):
         csv_path=r"F:/DATASET/NACTI/meta/nacti_metadata_balanced.csv"
     )
 
-    # set a random seed for reproducibility
-    g = torch.Generator().manual_seed(42)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    indices = np.arange(len(dataset))
+    labels = []
+    for i in range(len(dataset)):
+        _, target = dataset[i]
+        label = target['labels'][0].item()
+        labels.append(label)
+    labels = np.array(labels)
+    sss = StratifiedShuffleSplit(n_splits=1, test_size=0.1, random_state=42)
+    _, test_idx = next(sss.split(indices, labels))
 
-    # Split dataset into train, val, test
-    train_size = int(0.8 * len(dataset))
-    val_size = int(0.1 * len(dataset))
-    test_size = len(dataset) - train_size - val_size
-    train_dataset, val_dataset, test_dataset = random_split(
-        dataset, [train_size, val_size, test_size], g
-    )
+    test_dataset = Subset(dataset, test_idx)
+
 
     test_loader = DataLoader(
         test_dataset,
