@@ -411,7 +411,7 @@ def main_worker(args):
             find_unused_parameters=True,
         )
 
-    optimizer = optim.AdamW(model.parameters(), lr=args.lr)
+    optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-3)
 
     # weight balancing cross entropy loss
     # print(model)
