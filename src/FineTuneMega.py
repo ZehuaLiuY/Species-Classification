@@ -1,4 +1,5 @@
 import torch
+from torch.nn import CrossEntropyLoss
 from torchvision import transforms
 from PytorchWildlife.models import classification as pw_classification
 from tqdm import tqdm
@@ -9,6 +10,10 @@ from sklearn.metrics import precision_score, recall_score, f1_score, average_pre
 from dataset import NACTIAnnotationDataset
 import numpy as np
 from lossFunction import FocalLoss
+
+import os
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
+
 def collate_fn_remove_none(batch):
     """
     Custom collate function that removes None samples.
@@ -307,7 +312,7 @@ if __name__ == "__main__":
     print(f"Using device: {device}")
 
     # Initialize the model (this is a classification model from PytorchWildlife)
-    model = pw_classification.AI4GAmazonRainforest(device=device)
+    model = pw_classification.AI4GAmazonRainforest(version="v1", device=device)
 
     transform = transforms.Compose([
         transforms.Resize((256, 256)),
@@ -327,7 +332,7 @@ if __name__ == "__main__":
     #     torch.nn.Dropout(0.5),
     #     torch.nn.Linear(512, 46)
     # )
-    print("Initialized model with 46 classes.")
+    print("Initialized model")
 
     print("Loading dataset...")
     dataset = NACTIAnnotationDataset(
@@ -357,8 +362,8 @@ if __name__ == "__main__":
     print("DataLoaders created.")
 
     model.to(device)
-    optimizer = optim.AdamW(model.parameters(), lr=0.0001)
-    criterion = FocalLoss(alpha=1.0, gamma=2.0, reduction='mean')
+    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    criterion = CrossEntropyLoss()
     writer = SummaryWriter()
     num_epochs = 1000
     global_step = 0
