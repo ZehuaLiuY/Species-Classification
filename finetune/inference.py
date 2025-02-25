@@ -5,7 +5,7 @@ from torchvision import transforms
 from PytorchWildlife.models import classification as pw_classification
 import json
 from PIL import Image
-MODEL_PATH = "../src/models/focal_loss/best_model.pth"
+MODEL_PATH = "/models/focal_loss/best_model.pth"
 
 Class_names = {
     0: 'american black bear', 1: 'american marten', 2: 'american red squirrel', 3: 'black-tailed jackrabbit',

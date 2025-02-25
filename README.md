@@ -1,2 +1,1 @@
-# Project-Prep
-Preperation for the Individual Project
+# Species and Long-Tail Recognition

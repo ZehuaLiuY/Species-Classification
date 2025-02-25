@@ -160,9 +160,9 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 .idea/
 
-/src/runs/
+/finetune/runs/
 .DS_Store
-/src/models/
+/finetune/models/
 /metadata/
 /test_result/
-/test_img/
+/tools/ploting/New Folder/

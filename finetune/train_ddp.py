@@ -411,7 +411,7 @@ def main_worker(args):
             find_unused_parameters=True,
         )
 
-    optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-3)
+    optimizer = optim.AdamW(model.parameters(), lr=args.lr)
 
     # weight balancing cross entropy loss
     # print(model)
@@ -544,7 +544,7 @@ def main():
     parser.add_argument('--epochs', type=int, default=1000, help="Number of total epochs to run")
     parser.add_argument('--batch_size', type=int, default=16, help="Batch size per process")
     parser.add_argument('--lr', type=float, default=1e-4, help="Learning rate")
-    parser.add_argument('--patience', type=int, default=5, help="Patience for early stopping")
+    parser.add_argument('--patience', type=int, default=10, help="Patience for early stopping")
     parser.add_argument('--delta', type=float, default=1e-4, help="Minimal change for early stopping")
     args = parser.parse_args()
 

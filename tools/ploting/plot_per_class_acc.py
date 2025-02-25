@@ -123,7 +123,7 @@ plot_stacked_compare(
     order=common_order,
     label_baseline="Cross (Baseline)",
     label_improved="Focal Loss",
-    title="Stacked Accuracy: Cross vs Focal"
+    title="Cross Entropy vs Focal Loss Under AdamW"
 )
 
 # 画一张 “Cross vs Weighted” 的堆叠图
@@ -134,5 +134,5 @@ plot_stacked_compare(
     order=common_order,
     label_baseline="Cross (Baseline)",
     label_improved="Weighted CE",
-    title="Stacked Accuracy: Cross vs Weighted CE"
+    title="Cross Entropy vs Weighted Cross Entropy Under AdamW"
 )

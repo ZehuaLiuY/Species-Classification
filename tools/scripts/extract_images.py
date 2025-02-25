@@ -1,6 +1,6 @@
 import os
 from PIL import Image
-from src.dataset import NACTIAnnotationDataset
+from finetune.dataset import NACTIAnnotationDataset
 
 output_dir = r"E:\result\image"
 os.makedirs(output_dir, exist_ok=True)
