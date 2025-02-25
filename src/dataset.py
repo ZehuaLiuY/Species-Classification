@@ -42,6 +42,7 @@ class NACTIAnnotationDataset(Dataset):
             # delete the empty string if the allow_empty is False
             if not allow_empty and 'empty' in unique_cnames:
                 unique_cnames.remove('empty')
+                unique_cnames.remove('vehicle')
 
 
             unique_cnames = sorted(unique_cnames)
