@@ -3,13 +3,13 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 
-macro_path = r'/Users/zehualiu/Documents/GitHub/Project-Prep/test_result/46/results_macro.json'
-micro_path = r'/Users/zehualiu/Documents/GitHub/Project-Prep/test_result/46/results_micro.json'
-weighted_path = r'/Users/zehualiu/Documents/GitHub/Project-Prep/test_result/46/results_weighted.json'
+macro_path = r'/Users/zehualiu/Documents/GitHub/Species-Classification/test_result/46/results_macro.json'
+micro_path = r'/Users/zehualiu/Documents/GitHub/Species-Classification/test_result/46/results_micro.json'
+weighted_path = r'/Users/zehualiu/Documents/GitHub/Species-Classification/test_result/46/results_weighted.json'
 
-focal_loss_path = r'/Users/zehualiu/Documents/GitHub/Project-Prep/test_result/forcal_loss_49.json'
-weighted_cross_path = r'/Users/zehualiu/Documents/GitHub/Project-Prep/test_result/weightedCrossEntropy_49.json'
-cross_path = r'/Users/zehualiu/Documents/GitHub/Project-Prep/test_result/results_weighted.json'
+focal_loss_path = r'/Users/zehualiu/Documents/GitHub/Species-Classification/test_result/forcal_loss_49.json'
+weighted_cross_path = r'/Users/zehualiu/Documents/GitHub/Species-Classification/test_result/weightedCrossEntropy_49.json'
+cross_path = r'/Users/zehualiu/Documents/GitHub/Species-Classification/test_result/results_weighted.json'
 
 def load_json(filepath):
     with open(filepath, "r", encoding="utf-8") as f:
