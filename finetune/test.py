@@ -4,7 +4,7 @@ from torchvision import transforms
 from PytorchWildlife.models import classification as pw_classification
 from tqdm import tqdm
 from torch.utils.data import random_split, DataLoader, Subset
-from sklearn.metrics import precision_score, recall_score, f1_score, precision_recall_fscore_support
+from sklearn.metrics import precision_score, recall_score, f1_score, precision_recall_fscore_support, confusion_matrix
 from dataset import NACTIAnnotationDataset
 import argparse
 import json
@@ -44,10 +44,8 @@ parser.add_argument(
 def pil_collect_fn(batch):
     """
     Custom collate function that returns a list of PIL.Image and target_dict.
-
     Args:
         batch (list): A list of (PIL.Image, target_dict) tuples.
-
     Returns:
         (list, list): List of PIL.Image and list of target_dict.
     """
@@ -57,10 +55,8 @@ def pil_collect_fn(batch):
 def collate_fn_remove_none(batch):
     """
     Custom collate function that removes None samples.
-
     Args:
         batch (list): A list of (image, target) tuples, possibly containing None.
-
     Returns:
         (list or None, list or None):
             - If valid samples exist, returns (list_of_images, list_of_targets).
@@ -75,21 +71,28 @@ def collate_fn_remove_none(batch):
 def test_model(model, loader, criterion, device, transform=None):
     """
     Test the model in a bounding-box-based workflow.
-
     Args:
         model (nn.Module): Classification model to test.
         loader (DataLoader): Dataloader returning a batch of (PIL.Image, target_dict).
         criterion (nn.Module): Loss function (e.g., CrossEntropyLoss).
         device (torch.device): CPU or GPU device.
         transform (callable): Global transform for bounding box crops (same as train/val).
-
     Returns:
         dict: {
             'loss': float,
             'acc': float,
             'precision': float,
             'recall': float,
-            'f1': float
+            'f1': float,
+            'per_class_precision': list,
+            'per_class_recall': list,
+            'per_class_f1': list,
+            'per_class_accuracy': list,
+            'true_positives': list,
+            'class_bias': list,
+            'class_prevalence': list,
+            'classes_order': list,
+            'confusion_matrix': list of lists
         }
     """
     model.eval()
@@ -154,10 +157,9 @@ def test_model(model, loader, criterion, device, transform=None):
             test_running_loss += batch_loss
             test_running_total += batch_num
             _, predicted = torch.max(outputs, dim=1)
-            # write the predicted labels and ground truth labels into a csv file
+
             predicted_class_names = [Class_names[p.item()] for p in predicted]
             gt_class_names = [Class_names[l.item()] for l in batch_labels]
-
 
             for pred_name, gt_name in zip(predicted_class_names, gt_class_names):
                 results.append({
@@ -174,10 +176,9 @@ def test_model(model, loader, criterion, device, transform=None):
     test_loss = test_running_loss / max(len(loader), 1)
     test_acc = test_correct / max(test_total, 1)
 
-    # class_lrevalence is the number of samples in each class
-    # class_bias is the number of predictions in each class
-    class_prevalence = np.zeros(49, dtype=int)
-    class_bias = np.zeros(49, dtype=int)
+    # per-class metrics
+    class_prevalence = np.zeros(48, dtype=int)
+    class_bias = np.zeros(48, dtype=int)
     for label in all_test_labels:
         class_prevalence[label] += 1
     for pred in all_test_preds:
@@ -193,15 +194,14 @@ def test_model(model, loader, criterion, device, transform=None):
         all_test_labels, all_test_preds, labels=range(49), zero_division=0
     )
 
-    # True positives for each class
-    true_positives = np.zeros(49, dtype=int)
+    # calculate per-class accuracy
+    true_positives = np.zeros(48, dtype=int)
     all_test_labels_np = np.array(all_test_labels)
     all_test_preds_np = np.array(all_test_preds)
     for i in range(49):
         true_positives[i] = np.sum((all_test_labels_np == i) & (all_test_preds_np == i))
 
-    # Accuracy for each class, per_class_accuracy[i] = true_positives[i] / class_prevalence[i]
-    per_class_accuracy = np.zeros(49, dtype=float)
+    per_class_accuracy = np.zeros(48, dtype=float)
     for i in range(49):
         if class_prevalence[i] > 0:
             per_class_accuracy[i] = true_positives[i] / class_prevalence[i]
@@ -224,8 +224,12 @@ def test_model(model, loader, criterion, device, transform=None):
         'classes_order': list(range(49))
     }
 
-    # save the results into a json file
-    with open("../test_result/forcal_loss_49.json", "w", encoding="utf-8") as f:
+    # calculate confusion matrix
+    cm = confusion_matrix(all_test_labels, all_test_preds, labels=list(range(49)))
+    metrics['confusion_matrix'] = cm.tolist()
+
+    # save detailed results to JSON file
+    with open("../test_result/forcal_loss.json", "w", encoding="utf-8") as f:
         json.dump(results, f, indent=4, ensure_ascii=False)
 
     return metrics
@@ -235,16 +239,15 @@ def main(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # load the fine-tuned classification model
+    # Load model and checkpoint
     model = pw_classification.AI4GAmazonRainforest(device=device)
-
     num_features = model.net.classifier.in_features
-    model.net.classifier = torch.nn.Linear(num_features, 49)
+    model.net.classifier = torch.nn.Linear(num_features, 48)
 
     checkpoint = torch.load(args.model_path, map_location=device)
     state_dict = checkpoint.get("model", checkpoint)
 
-    # check if the model was trained with DDP, if so, remove the "module." prefix
+    # if using DistributedDataParallel, remove the "module." prefix
     if args.train_type == 'ddp':
         state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
     else:
@@ -278,7 +281,6 @@ def main(args):
 
     test_dataset = Subset(dataset, test_idx)
 
-
     test_loader = DataLoader(
         test_dataset,
         batch_size=8,
@@ -288,7 +290,7 @@ def main(args):
 
     criterion = torch.nn.CrossEntropyLoss()
 
-    # Test
+    # Test the model
     test_metrics = test_model(model, test_loader, criterion, device, transform=transform)
     print(f"[Test]  Loss: {test_metrics['loss']:.4f} | "
           f"Acc: {test_metrics['acc']:.4f} | "
@@ -296,7 +298,7 @@ def main(args):
           f"Recall: {test_metrics['recall']:.4f} | "
           f"F1: {test_metrics['f1']:.4f}")
 
-    # write the test metrics into a txt file with detailed per-class metrics
+    # Save test results to a text file
     with open("../test_result/forcal_loss_49_49.txt", "w", encoding="utf-8") as f:
         f.write("==== Test Results ====\n")
         f.write(f"Loss: {test_metrics['loss']:.4f}\n")
@@ -331,8 +333,7 @@ def main(args):
             )
             f.write(line)
 
-        # print a histogram of classes vs amount of img per calls
-
+        # Add overall metrics
         plt.figure(figsize=(15, 8))
         plt.bar(range(49), test_metrics['class_prevalence'], tick_label=[Class_names[i] for i in range(49)])
         plt.xticks(rotation=90)
@@ -343,7 +344,20 @@ def main(args):
         plt.savefig("../test_result/class_prevalence_histogram.png")
         plt.close()
 
-
+    # Plot confusion matrix
+    cm = np.array(test_metrics['confusion_matrix'])
+    plt.figure(figsize=(12, 10))
+    plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+    plt.title("Confusion Matrix")
+    plt.colorbar()
+    tick_marks = np.arange(49)
+    plt.xticks(tick_marks, [Class_names[i] for i in range(49)], rotation=90, fontsize=8)
+    plt.yticks(tick_marks, [Class_names[i] for i in range(49)], fontsize=8)
+    plt.xlabel("Predicted Label")
+    plt.ylabel("True Label")
+    plt.tight_layout()
+    plt.savefig("../test_result/confusion_matrix.png")
+    plt.close()
 
 if __name__ == "__main__":
     main(parser.parse_args())
