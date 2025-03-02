@@ -123,10 +123,12 @@ def main(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
 
-    # 定义 crop_transform
+    # crop_transform
     crop_transform = transforms.Compose([
         transforms.Resize((224, 224)),
-        transforms.ToTensor()
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                             std=[0.229, 0.224, 0.225]),
     ])
 
     # --- dataset ---
@@ -144,10 +146,11 @@ def main(args):
         crop_transform=crop_transform
     )
 
+    g = torch.Generator().manual_seed(0)
     train_size = int(0.8 * len(dataset))
     val_size = int(0.1 * len(dataset))
     remaining = len(dataset) - train_size - val_size
-    train_dataset, val_dataset, _ = random_split(dataset, [train_size, val_size, remaining])
+    train_dataset, val_dataset, _ = random_split(dataset, [train_size, val_size, remaining], generator=g)
 
     train_loader = DataLoader(train_dataset,
                               batch_size=args.batch_size,
@@ -214,11 +217,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train Multimodal Long Tail Classifier with Pre-cropped Regions")
     parser.add_argument("--num_classes", type=int, default=48, help="Number of classes")
     parser.add_argument("--batch_size", type=int, default=8, help="Batch size for training")
-    parser.add_argument("--epochs", type=int, default=10, help="Number of training epochs")
+    parser.add_argument("--epochs", type=int, default=1000, help="Number of training epochs")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--save_dir", type=str, default="./checkpoints", help="Directory to save model checkpoints")
     parser.add_argument("--patience", type=int, default=10, help="Early stopping patience")
-    parser.add_argument("--delta", type=float, default=0.005, help="Minimum improvement delta to reset patience")
+    parser.add_argument("--delta", type=float, default=0.001, help="Minimum improvement delta to reset patience")
     args = parser.parse_args()
 
     os.makedirs(args.save_dir, exist_ok=True)
