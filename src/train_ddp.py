@@ -81,7 +81,7 @@ def train_epoch(
     dist.reduce(total, 0, op=dist.ReduceOp.SUM)
 
     if rank ==0:
-        epoch_loss = training_loss / running_samples if running_samples > 0 else 0
+        epoch_loss = training_loss.sum().item()
         epoch_acc = correct / total if total > 0 else 0
         return epoch_loss, epoch_acc, global_step
 
