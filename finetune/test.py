@@ -21,7 +21,7 @@ Class_names = {
     32: "steller's jay", 33: 'striped skunk', 34: 'unidentified accipitrid', 35: 'unidentified bird',
     36: 'unidentified chipmunk', 37: 'unidentified corvus', 38: 'unidentified deer', 39: 'unidentified deer mouse',
     40: 'unidentified mouse', 41: 'unidentified pack rat', 42: 'unidentified pocket gopher', 43: 'unidentified rabbit',
-    44: 'vehicle', 45: 'virginia opossum', 46: 'wild boar', 47: 'wild turkey', 48: 'yellow-bellied marmot'
+    44: 'virginia opossum', 45: 'wild boar', 46: 'wild turkey', 47: 'yellow-bellied marmot'
 }
 
 parser = argparse.ArgumentParser(
@@ -191,18 +191,18 @@ def test_model(model, loader, criterion, device, transform=None):
     test_f1 = f1_score(all_test_labels, all_test_preds, average='weighted', zero_division=0)
 
     per_class_prec, per_class_rec, per_class_f1, support = precision_recall_fscore_support(
-        all_test_labels, all_test_preds, labels=range(49), zero_division=0
+        all_test_labels, all_test_preds, labels=range(48), zero_division=0
     )
 
     # calculate per-class accuracy
     true_positives = np.zeros(48, dtype=int)
     all_test_labels_np = np.array(all_test_labels)
     all_test_preds_np = np.array(all_test_preds)
-    for i in range(49):
+    for i in range(48):
         true_positives[i] = np.sum((all_test_labels_np == i) & (all_test_preds_np == i))
 
     per_class_accuracy = np.zeros(48, dtype=float)
-    for i in range(49):
+    for i in range(48):
         if class_prevalence[i] > 0:
             per_class_accuracy[i] = true_positives[i] / class_prevalence[i]
         else:
@@ -221,11 +221,11 @@ def test_model(model, loader, criterion, device, transform=None):
         'true_positives': true_positives.tolist(),
         'class_bias': class_bias.tolist(),
         'class_prevalence': class_prevalence.tolist(),
-        'classes_order': list(range(49))
+        'classes_order': list(range(48))
     }
 
     # calculate confusion matrix
-    cm = confusion_matrix(all_test_labels, all_test_preds, labels=list(range(49)))
+    cm = confusion_matrix(all_test_labels, all_test_preds, labels=list(range(48)))
     metrics['confusion_matrix'] = cm.tolist()
 
     # save detailed results to JSON file
@@ -299,7 +299,7 @@ def main(args):
           f"F1: {test_metrics['f1']:.4f}")
 
     # Save test results to a text file
-    with open("../test_result/forcal_loss_49_49.txt", "w", encoding="utf-8") as f:
+    with open("../test_result/forcal_loss.txt", "w", encoding="utf-8") as f:
         f.write("==== Test Results ====\n")
         f.write(f"Loss: {test_metrics['loss']:.4f}\n")
         f.write(f"Overall Accuracy: {test_metrics['acc']:.4f}\n")
@@ -320,7 +320,7 @@ def main(args):
         f.write(header)
         f.write("-" * (35 + 10 + 10 + 12 + 10 + 14 + 10) + "\n")
 
-        for i in range(49):
+        for i in range(48):
             class_name = f"Class {i} ({Class_names[i]})"
             line = (
                 f"{class_name:<35}"
@@ -335,7 +335,7 @@ def main(args):
 
         # Add overall metrics
         plt.figure(figsize=(15, 8))
-        plt.bar(range(49), test_metrics['class_prevalence'], tick_label=[Class_names[i] for i in range(49)])
+        plt.bar(range(48), test_metrics['class_prevalence'], tick_label=[Class_names[i] for i in range(48)])
         plt.xticks(rotation=90)
         plt.xlabel("Class")
         plt.ylabel("Number of Images")
@@ -350,9 +350,9 @@ def main(args):
     plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
     plt.title("Confusion Matrix")
     plt.colorbar()
-    tick_marks = np.arange(49)
-    plt.xticks(tick_marks, [Class_names[i] for i in range(49)], rotation=90, fontsize=8)
-    plt.yticks(tick_marks, [Class_names[i] for i in range(49)], fontsize=8)
+    tick_marks = np.arange(48)
+    plt.xticks(tick_marks, [Class_names[i] for i in range(48)], rotation=90, fontsize=8)
+    plt.yticks(tick_marks, [Class_names[i] for i in range(48)], fontsize=8)
     plt.xlabel("Predicted Label")
     plt.ylabel("True Label")
     plt.tight_layout()
