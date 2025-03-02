@@ -67,7 +67,7 @@ def train_epoch(
         correct += (predicted == batch_labels).sum().item()
         total += batch_labels.size(0)
 
-        if (batch_idx + 1) % log_interval == 0:
+        if writer is not None and (batch_idx + 1) % log_interval == 0:
             batch_acc = (predicted == batch_labels).float().mean().item()
             writer.add_scalar('Train/Loss_batch', batch_loss, global_step)
             writer.add_scalar('Train/Accuracy_batch', batch_acc, epoch * global_step)
@@ -182,22 +182,36 @@ def validate(
     return None
 
 def main(args):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("Using device:", device)
+    print(rank)
+
+    print(f"Rank {rank} about to init_process_group()...")
+    dist.init_process_group(
+        backend="nccl",
+        world_size=world_size,
+        rank=rank,
+        timeout=timedelta(seconds=1800)
+    )
+    print(f"Rank {rank} after init_process_group()!")
+
+    torch.cuda.set_device(local_rank)
+    device = torch.device(f"cuda:{local_rank}")
+
 
     crop_transform = transforms.Compose([
         transforms.Resize((224, 224)),
-        transforms.ToTensor()
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                             std=[0.229, 0.224, 0.225]),
     ])
 
     # --- dataset ---
     print("Initializing dataloaders...")
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
     dataset = MultimodalNACTIDataset(
-        image_dir=r"F:\DATASET\NACTI\images",
-        json_path=r"E:\result\json\detection\detection_filtered.json",
-        csv_path=r"F:/DATASET/NACTI/meta/nacti_metadata_balanced.csv",
-        text_csv_path=r"F:/DATASET/NACTI/meta/description.csv",
+        image_dir=r"/user/work/bw19062/Individual_Project/dataset/image",
+        json_path=r"/user/work/bw19062/Individual_Project/dataset/metadata/detection/detection_filtered.json",
+        csv_path=r"/user/work/bw19062/Individual_Project/dataset/metadata/nacti_metadata_balanced.csv",
+        text_csv_path=r"/user/work/bw19062/Individual_Project/dataset/metadata/description.csv",
         transforms=None,
         allow_empty=False,
         tokenizer=tokenizer,
@@ -320,8 +334,8 @@ def main(args):
 
         if rank == 0:
             print(f"[Validation] Loss: {val_metrics['loss']:.4f} | Acc: {val_metrics['acc']:.4f} | "
-                f"Precision: {val_metrics['precision']:.4f} | Recall: {val_metrics['recall']:.4f} | "
-                f"F1: {val_metrics['f1']:.4f} | mAP: {val_metrics['mAP']:.4f}")
+                  f"Precision: {val_metrics['precision']:.4f} | Recall: {val_metrics['recall']:.4f} | "
+                  f"F1: {val_metrics['f1']:.4f} | mAP: {val_metrics['mAP']:.4f}")
 
             # --- early stopping ---
             # save best model based on recall
