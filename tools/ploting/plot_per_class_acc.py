@@ -2,7 +2,9 @@ import json
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.ticker import LogLocator, FuncFormatter
 
+# File paths for JSON results
 macro_path = r'/Users/zehualiu/Documents/GitHub/Species-Classification/test_result/46/results_macro.json'
 micro_path = r'/Users/zehualiu/Documents/GitHub/Species-Classification/test_result/46/results_micro.json'
 weighted_path = r'/Users/zehualiu/Documents/GitHub/Species-Classification/test_result/46/results_weighted.json'
@@ -11,19 +13,23 @@ focal_loss_path = r'/Users/zehualiu/Documents/GitHub/Species-Classification/test
 weighted_cross_path = r'/Users/zehualiu/Documents/GitHub/Species-Classification/test_result/weightedCrossEntropy_49.json'
 cross_path = r'/Users/zehualiu/Documents/GitHub/Species-Classification/test_result/results_weighted.json'
 
+# Function to load JSON data into a Pandas DataFrame
 def load_json(filepath):
     with open(filepath, "r", encoding="utf-8") as f:
         data = json.load(f)
     return pd.DataFrame(data)
 
-df_macro = load_json(focal_loss_path)     # focal
-df_micro = load_json(weighted_cross_path) # weighted cross
-df_weighted = load_json(cross_path)       # cross (baseline)
+# Load data for different loss functions
+df_macro = load_json(focal_loss_path)      # Data for Focal Loss
+df_micro = load_json(weighted_cross_path)    # Data for Weighted Cross Entropy
+df_weighted = load_json(cross_path)          # Data for Cross Entropy (Baseline)
 
+# Function to compute per-class accuracy
 def compute_accuracy(df):
+    # Create a boolean column 'correct' indicating if the predicted class equals the ground truth
     df["correct"] = df["predicted_class"] == df["ground_truth_class"]
-    print(f"correct predicted number: {df['correct'].sum()} / {len(df)}")
-    # 返回每个类的准确率
+    print(f"Correct predicted number: {df['correct'].sum()} / {len(df)}")
+    # Return the mean correctness (accuracy) for each ground truth class
     return df.groupby("ground_truth_class")["correct"].mean()
 
 print("Focal Loss:")
@@ -33,44 +39,42 @@ accuracy_micro = compute_accuracy(df_micro)
 print("Cross Entropy (Baseline):")
 accuracy_weighted = compute_accuracy(df_weighted)
 
-# 根据baseline df来获取类出现频次并排序
+# Get class prevalence (frequency) from the baseline DataFrame and determine the display order
 class_prevalence = df_weighted['ground_truth_class'].value_counts()
 common_order = class_prevalence.index
 
-
+# Function to plot a stacked bar chart comparing per-class accuracies and overlay class counts on a log scale
 def plot_stacked_compare(accuracy_baseline, accuracy_improved,
-                         class_counts,
-                         order,
+                         class_counts, order,
                          label_baseline="Baseline",
                          label_improved="Improved",
                          title="Stacked Accuracy Comparison"):
     """
-    在同一张图上用堆叠柱状图对比 baseline 和 improved 的 per-class accuracy，
-    其中 baseline 在下面，(improved - baseline) 叠在上面。
-    同时在右侧 y 轴叠加 class_counts 的曲线。
+    Plot a stacked bar chart comparing per-class accuracies between a baseline and an improved method.
+    The baseline accuracy is the bottom bar and the difference (improved - baseline) is stacked on top.
+    A line plot (secondary y-axis) shows the number of samples per class on a log scale.
 
-    参数：
-      accuracy_baseline: pd.Series, index是类名/ID
-      accuracy_improved: pd.Series, 同上
-      class_counts:      pd.Series or array，每个类出现频次
-      order:             要显示的类顺序 (list或index)
-      label_baseline:    底部柱子的图例名称
-      label_improved:    叠加部分柱子的图例名称
-      title:             图标题
+    Parameters:
+      accuracy_baseline: pd.Series of baseline accuracies (index is class name/ID)
+      accuracy_improved: pd.Series of improved accuracies
+      class_counts:      pd.Series or array with sample counts for each class
+      order:             Ordered list/index of classes to display
+      label_baseline:    Label for the baseline bar
+      label_improved:    Label for the stacked (improved) bar
+      title:             Plot title
     """
-
-    # 根据指定顺序 reindex
+    # Reindex series to the specified order
     acc_base_ordered = accuracy_baseline.reindex(order)
     acc_imp_ordered  = accuracy_improved.reindex(order)
     counts_ordered   = class_counts.reindex(order) if hasattr(class_counts, 'reindex') else np.array(class_counts)[order]
 
-    # 计算“叠加”部分：diff = improved - baseline
+    # Calculate the difference (improved - baseline)
     diff = acc_imp_ordered - acc_base_ordered
 
     x = np.arange(len(order))
     fig, ax1 = plt.subplots(figsize=(14, 6))
 
-    # 第1段：baseline 柱子
+    # Plot baseline accuracy as the bottom bar
     ax1.bar(
         x,
         acc_base_ordered.values,
@@ -79,7 +83,7 @@ def plot_stacked_compare(accuracy_baseline, accuracy_improved,
         alpha=0.7,
         label=label_baseline
     )
-    # 第2段：叠加在 baseline 上的 “diff”
+    # Plot the difference as a stacked bar on top of the baseline
     ax1.bar(
         x,
         diff.values,
@@ -90,7 +94,7 @@ def plot_stacked_compare(accuracy_baseline, accuracy_improved,
         label=label_improved
     )
 
-    # 左侧 y 轴：accuracy
+    # Configure left y-axis for accuracy
     ax1.set_ylabel("Accuracy")
     ax1.set_ylim(0, 1.0)
     ax1.set_xticks(x)
@@ -99,23 +103,29 @@ def plot_stacked_compare(accuracy_baseline, accuracy_improved,
     ax1.set_title(title)
     ax1.grid(axis="y", linestyle="--", alpha=0.5)
 
-    # 右侧 y 轴：类的样本数
+    # Create a secondary y-axis for the class sample counts
     ax2 = ax1.twinx()
     ax2.set_ylabel("#Images")
+    # Plot the sample counts as a black line with markers
     ax2.plot(x, counts_ordered, color='black', linestyle='-')
-    ax2.set_ylim(0, counts_ordered.max()*1.2)
+
+    # Set the secondary y-axis to a logarithmic scale
+    ax2.set_yscale('log')
+    # Determine a suitable lower bound (avoid zero to prevent log(0) issues)
+    if (counts_ordered > 0).any():
+        ymin = counts_ordered[counts_ordered > 0].min()
+    else:
+        ymin = 1
+    ax2.set_ylim(ymin, counts_ordered.max()*1.2)
+
+    # Set major ticks to powers of 10 and format them as 10^n
+    ax2.yaxis.set_major_locator(LogLocator(base=10))
+    ax2.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f'$10^{{{int(np.log10(y))}}}$' if y > 0 else "0"))
 
     plt.tight_layout()
     plt.show()
 
-
-# accuracy_weighted 是 Cross (Baseline)
-# accuracy_macro    是 Focal Loss
-# accuracy_micro    是 Weighted CE
-# class_prevalence  是每个类的样本数
-# common_order      是类的排序
-
-# 画一张 “Cross vs Focal” 的堆叠图
+# Plot "Cross Entropy vs Focal Loss" comparison
 plot_stacked_compare(
     accuracy_baseline=accuracy_weighted,
     accuracy_improved=accuracy_macro,
@@ -126,7 +136,7 @@ plot_stacked_compare(
     title="Cross Entropy vs Focal Loss Under AdamW"
 )
 
-# 画一张 “Cross vs Weighted” 的堆叠图
+# Plot "Cross Entropy vs Weighted Cross Entropy" comparison
 plot_stacked_compare(
     accuracy_baseline=accuracy_weighted,
     accuracy_improved=accuracy_micro,
