@@ -16,6 +16,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
 from datetime import timedelta
 
+
 world_size = int(os.getenv('SLURM_NTASKS'))
 rank = int(os.getenv('SLURM_PROCID'))
 local_rank = int(os.getenv('SLURM_LOCALID'))
@@ -130,7 +131,7 @@ def validate(
 
             _, predicted = torch.max(outputs, dim=1)
             val_correct += (predicted == batch_labels).sum().item()
-            total += batch_labels.size(0)
+            val_total += batch_labels.size(0)
 
             local_preds.append(predicted.cpu().tolist())
             local_labels.append(batch_labels.cpu().tolist())
@@ -139,7 +140,7 @@ def validate(
     dist.reduce(validation_loss, 0, op=dist.ReduceOp.SUM)
     dist.reduce(val_running_total, 0, op=dist.ReduceOp.SUM)
     dist.reduce(val_correct, 0, op=dist.ReduceOp.SUM)
-    dist.reduce(total, 0, op=dist.ReduceOp.SUM)
+    dist.reduce(val_total, 0, op=dist.ReduceOp.SUM)
 
     local_preds = np.concatenate(local_preds, axis=0) if len(local_labels) > 0 else np.array([])
     local_labels = np.concatenate(local_labels, axis=0) if len(local_labels) > 0 else np.array([])
@@ -153,7 +154,7 @@ def validate(
     if rank == 0:
         val_running_loss = validation_loss.sum().item()
         val_loss = val_running_loss / max(val_running_total, 1)
-        val_acc =val_correct / max(total, 1)
+        val_acc =val_correct / max(val_total, 1)
 
         global_preds = np.concatenate([arr for arr in gather_list_preds if arr is not None])
         global_labels = np.concatenate([arr for arr in gather_list_labels if arr is not None])
@@ -314,7 +315,7 @@ def main(args):
 
         if rank == 0:
             # log epoch-level metrics
-            print(f"[Train] Epoch {epoch}/{num_epochs} | Loss: {train_loss:.4f} | Acc: {train_acc:.4f}")
+            print(f"[Train] Epoch {epoch}/{num_epochs} | Loss: {train_loss:.4f} | Acc: {train_acc:.4f}", flush=True)
             writer.add_scalar('Train/Loss_epoch', train_loss, epoch)
             writer.add_scalar('Train/Accuracy_epoch', train_acc, epoch)
 
@@ -335,7 +336,7 @@ def main(args):
         if rank == 0:
             print(f"[Validation] Loss: {val_metrics['loss']:.4f} | Acc: {val_metrics['acc']:.4f} | "
                   f"Precision: {val_metrics['precision']:.4f} | Recall: {val_metrics['recall']:.4f} | "
-                  f"F1: {val_metrics['f1']:.4f} | mAP: {val_metrics['mAP']:.4f}")
+                  f"F1: {val_metrics['f1']:.4f} | mAP: {val_metrics['mAP']:.4f}", flush=True)
 
             # --- early stopping ---
             # save best model based on recall
@@ -343,13 +344,13 @@ def main(args):
                 best_recall = val_metrics['recall']
                 best_model_path = os.path.join(args.save_dir, "best_model.pth")
                 torch.save(model.module.state_dict(), best_model_path)
-                print(f"Best model saved with recall: {best_recall:.4f} at Epoch: {epoch}")
+                print(f"Best model saved with recall: {best_recall:.4f} at Epoch: {epoch}", flush=True)
                 no_improvements = 0
             else:
                 no_improvements += 1
-                print(f"No improvements for {no_improvements} consecutive epoch. Current best recall: {best_recall:.4f}")
+                print(f"No improvements for {no_improvements} consecutive epoch. Current best recall: {best_recall:.4f}", flush=True)
                 if no_improvements >= patience:
-                    print(f"Early stopping at Epoch: {epoch}")
+                    print(f"Early stopping at Epoch: {epoch}", flush=True)
                     early_stop_flag = 1
                     break
                 else:
@@ -363,14 +364,14 @@ def main(args):
 
         if early_stop_tensor.item() == 1:
             if rank == 0:
-                print(f"Early stopping triggered after {epoch} epochs without improvement.")
+                print(f"Early stopping triggered after {epoch} epochs without improvement.", flush=True)
             break
     # save final model
     if rank == 0:
         final_model_path = os.path.join(args.save_dir, "final_model.pth")
         torch.save(model.module.state_dict(), final_model_path)
         writer.close()
-        print("Final model saved.")
+        print("Final model saved.", flush=True)
 
     dist.destroy_process_group()
 
