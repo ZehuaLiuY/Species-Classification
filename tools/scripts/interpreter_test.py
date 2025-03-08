@@ -16,4 +16,5 @@ detection_result = detection_model.single_image_detection(img)
 #Classification
 classification_model = pw_classification.AI4GAmazonRainforest() # Model weights are automatically downloaded.
 classification_results = classification_model.single_image_classification(img)
+print(classification_model)
 print('all done')
