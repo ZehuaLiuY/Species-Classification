@@ -3,11 +3,11 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.ticker import LogLocator, FuncFormatter
+from matplotlib.patches import Patch
 
 # File paths for JSON results
-base_path = r'G:\Code\github\Project-Prep\test_result\json\CE_Adam.json'
-improve_path = r'G:\Code\github\Project-Prep\test_result\json\CE_AdamW.json'
-
+base_path = r'/Users/zehualiu/Documents/GitHub/Species-Classification/test_result/weightedCrossEntropy_49.json'
+improve_path = r'/Users/zehualiu/Documents/GitHub/Species-Classification/test_result/forcal_loss_49.json'
 
 # Function to load JSON data into a Pandas DataFrame
 def load_json(filepath):
@@ -35,26 +35,27 @@ accuracy_improve = compute_accuracy(df_improve)
 
 # Get class prevalence (frequency) from the baseline DataFrame and determine the display order
 class_prevalence = df_base['ground_truth_class'].value_counts()
+# Filter out classes with zero prevalence
+class_prevalence = class_prevalence[class_prevalence != 0]
 common_order = class_prevalence.index
 
-# Function to plot a stacked bar chart comparing per-class accuracies and overlay class counts on a log scale
-def plot_stacked_compare(accuracy_baseline, accuracy_improved,
-                         class_counts, order,
+# Function to plot a stacked bar chart comparing per-class accuracies with a log-scale overlay of sample counts
+def plot_stacked_compare(accuracy_baseline, accuracy_improved, class_counts, order,
                          label_baseline="Baseline",
                          label_improved="Improved",
                          title="Stacked Accuracy Comparison"):
     """
     Plot a stacked bar chart comparing per-class accuracies between a baseline and an improved method.
-    The baseline accuracy is the bottom bar and the difference (improved - baseline) is stacked on top.
-    A line plot (secondary y-axis) shows the number of samples per class on a log scale.
+    The baseline accuracy is displayed as the bottom bar, and the difference (improved - baseline) is stacked on top.
+    A line plot (on a secondary y-axis) shows the number of samples per class on a log scale.
 
     Parameters:
-      accuracy_baseline: pd.Series of baseline accuracies (index is class name/ID)
+      accuracy_baseline: pd.Series of baseline accuracies (indexed by class name/ID)
       accuracy_improved: pd.Series of improved accuracies
       class_counts:      pd.Series or array with sample counts for each class
       order:             Ordered list/index of classes to display
       label_baseline:    Label for the baseline bar
-      label_improved:    Label for the stacked (improved) bar
+      label_improved:    Label for the difference bar (improved - baseline)
       title:             Plot title
     """
     # Reindex series to the specified order
@@ -65,37 +66,40 @@ def plot_stacked_compare(accuracy_baseline, accuracy_improved,
     # Calculate the difference (improved - baseline)
     diff = acc_imp_ordered - acc_base_ordered
 
+    # Set color based on difference: positive diff uses steelblue, negative diff uses crimson
+    diff_colors = ['steelblue' if d >= 0 else 'crimson' for d in diff.values]
+
     x = np.arange(len(order))
     fig, ax1 = plt.subplots(figsize=(14, 6))
 
     # Plot baseline accuracy as the bottom bar
-    ax1.bar(
-        x,
-        acc_base_ordered.values,
-        color='orange',
-        edgecolor='black',
-        alpha=0.7,
-        label=label_baseline
-    )
-    # Plot the difference as a stacked bar on top of the baseline
-    ax1.bar(
-        x,
-        diff.values,
-        bottom=acc_base_ordered.values,
-        color='steelblue',
-        edgecolor='black',
-        alpha=0.7,
-        label=label_improved
-    )
+    ax1.bar(x, acc_base_ordered.values,
+            color='orange',
+            edgecolor='black',
+            alpha=0.7,
+            label=label_baseline)
 
-    # Configure left y-axis for accuracy
+    # Plot the difference as a stacked bar on top of the baseline
+    ax1.bar(x, diff.values,
+            bottom=acc_base_ordered.values,
+            color=diff_colors,
+            edgecolor='black',
+            alpha=0.7,
+            label=label_improved)
+
+    # Configure the left y-axis for accuracy
     ax1.set_ylabel("Accuracy")
     ax1.set_ylim(0, 1.0)
     ax1.set_xticks(x)
     ax1.set_xticklabels(order, rotation=45, ha="right")
-    ax1.legend(loc="upper right")
     ax1.set_title(title)
     ax1.grid(axis="y", linestyle="--", alpha=0.5)
+
+    # Create custom legend items for baseline, positive diff, and negative diff
+    baseline_patch = Patch(facecolor='orange', edgecolor='black', label='Adam (Baseline)')
+    pos_patch = Patch(facecolor='steelblue', edgecolor='black', label='AdamW (Improved)')
+    neg_patch = Patch(facecolor='crimson', edgecolor='black', label='Negative Difference')
+    ax1.legend(handles=[baseline_patch, pos_patch, neg_patch], loc="upper right", framealpha=0.5)
 
     # Create a secondary y-axis for the class sample counts
     ax2 = ax1.twinx()
