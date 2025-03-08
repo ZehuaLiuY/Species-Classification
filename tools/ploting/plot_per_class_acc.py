@@ -5,13 +5,9 @@ import numpy as np
 from matplotlib.ticker import LogLocator, FuncFormatter
 
 # File paths for JSON results
-macro_path = r'/Users/zehualiu/Documents/GitHub/Species-Classification/test_result/46/results_macro.json'
-micro_path = r'/Users/zehualiu/Documents/GitHub/Species-Classification/test_result/46/results_micro.json'
-weighted_path = r'/Users/zehualiu/Documents/GitHub/Species-Classification/test_result/46/results_weighted.json'
+base_path = r'G:\Code\github\Project-Prep\test_result\json\CE_Adam.json'
+improve_path = r'G:\Code\github\Project-Prep\test_result\json\CE_AdamW.json'
 
-focal_loss_path = r'/Users/zehualiu/Documents/GitHub/Species-Classification/test_result/forcal_loss_49.json'
-weighted_cross_path = r'/Users/zehualiu/Documents/GitHub/Species-Classification/test_result/weightedCrossEntropy_49.json'
-cross_path = r'/Users/zehualiu/Documents/GitHub/Species-Classification/test_result/results_weighted.json'
 
 # Function to load JSON data into a Pandas DataFrame
 def load_json(filepath):
@@ -20,9 +16,9 @@ def load_json(filepath):
     return pd.DataFrame(data)
 
 # Load data for different loss functions
-df_macro = load_json(focal_loss_path)      # Data for Focal Loss
-df_micro = load_json(weighted_cross_path)    # Data for Weighted Cross Entropy
-df_weighted = load_json(cross_path)          # Data for Cross Entropy (Baseline)
+df_base = load_json(base_path)          # Data for baseline
+df_improve = load_json(improve_path)    # Data for improvements
+
 
 # Function to compute per-class accuracy
 def compute_accuracy(df):
@@ -32,15 +28,13 @@ def compute_accuracy(df):
     # Return the mean correctness (accuracy) for each ground truth class
     return df.groupby("ground_truth_class")["correct"].mean()
 
-print("Focal Loss:")
-accuracy_macro = compute_accuracy(df_macro)
-print("Weight Balanced Cross Entropy:")
-accuracy_micro = compute_accuracy(df_micro)
 print("Cross Entropy (Baseline):")
-accuracy_weighted = compute_accuracy(df_weighted)
+accuracy_base = compute_accuracy(df_base)
+print("Weight Balanced Cross Entropy:")
+accuracy_improve = compute_accuracy(df_improve)
 
 # Get class prevalence (frequency) from the baseline DataFrame and determine the display order
-class_prevalence = df_weighted['ground_truth_class'].value_counts()
+class_prevalence = df_base['ground_truth_class'].value_counts()
 common_order = class_prevalence.index
 
 # Function to plot a stacked bar chart comparing per-class accuracies and overlay class counts on a log scale
@@ -123,26 +117,18 @@ def plot_stacked_compare(accuracy_baseline, accuracy_improved,
     ax2.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f'$10^{{{int(np.log10(y))}}}$' if y > 0 else "0"))
 
     plt.tight_layout()
+    plt.savefig('per_class_comp.pdf', dpi=600, bbox_inches='tight', pad_inches=0)
     plt.show()
 
-# Plot "Cross Entropy vs Focal Loss" comparison
+
+# Plot comparison
 plot_stacked_compare(
-    accuracy_baseline=accuracy_weighted,
-    accuracy_improved=accuracy_macro,
+    accuracy_baseline=accuracy_base,
+    accuracy_improved=accuracy_improve,
     class_counts=class_prevalence,
     order=common_order,
-    label_baseline="Cross (Baseline)",
-    label_improved="Focal Loss",
-    title="Cross Entropy vs Focal Loss Under AdamW"
+    label_baseline="Adam",
+    label_improved="AdamW",
+    title="Adam vs AdamW Comparison (Cross Entropy)"
 )
 
-# Plot "Cross Entropy vs Weighted Cross Entropy" comparison
-plot_stacked_compare(
-    accuracy_baseline=accuracy_weighted,
-    accuracy_improved=accuracy_micro,
-    class_counts=class_prevalence,
-    order=common_order,
-    label_baseline="Cross (Baseline)",
-    label_improved="Weighted CE",
-    title="Cross Entropy vs Weighted Cross Entropy Under AdamW"
-)
