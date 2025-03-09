@@ -412,6 +412,9 @@ def main_worker(args):
         )
 
     optimizer = optim.AdamW(model.parameters(), lr=args.lr)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='min', patience=args.patience, factor=0.1, verbose=True
+    )
 
     # weight balancing cross entropy loss
     # print(model)
@@ -502,6 +505,9 @@ def main_worker(args):
                   f"Recall: {val_metrics['recall']:.4f} | "
                   f"F1: {val_metrics['f1']:.4f}"
                   )
+            current_loss_tensor = torch.tensor(val_metrics['loss'], dtype=torch.float32, device=device)
+            dist.broadcast(current_loss_tensor, 0)
+            scheduler.step(current_loss_tensor.item())
             # --- early stopping ---
             current_recall = val_metrics['recall']
 
