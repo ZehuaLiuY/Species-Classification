@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import os
 import matplotlib.colors as colors
 
+# 原始的类别映射（49类，包括 vehicle）
 Class_names = {
     0: 'american black bear', 1: 'american marten', 2: 'american red squirrel', 3: 'black-tailed jackrabbit',
     4: 'bobcat', 5: 'california ground squirrel', 6: 'california quail', 7: 'cougar', 8: 'coyote', 9: 'dark-eyed junco',
@@ -43,6 +44,7 @@ parser.add_argument(
     help="Choose training type: 'single' for single GPU or 'ddp' for DistributedDataParallel"
 )
 
+# 如果 vehicle 被排除，则 num_classes 设为48；如果保留则为49
 parser.add_argument(
     "--num_classes",
     type=int,
@@ -51,26 +53,10 @@ parser.add_argument(
 )
 
 def pil_collect_fn(batch):
-    """
-    Custom collate function that returns a list of PIL.Image and target_dict.
-    Args:
-        batch (list): A list of (PIL.Image, target_dict) tuples.
-    Returns:
-        (list, list): List of PIL.Image and list of target_dict.
-    """
     imgs, tgts = zip(*batch)
     return list(imgs), list(tgts)
 
 def collate_fn_remove_none(batch):
-    """
-    Custom collate function that removes None samples.
-    Args:
-        batch (list): A list of (image, target) tuples, possibly containing None.
-    Returns:
-        (list or None, list or None):
-            - If valid samples exist, returns (list_of_images, list_of_targets).
-            - If all are None, returns (None, None).
-    """
     filtered_batch = [item for item in batch if item is not None]
     if len(filtered_batch) == 0:
         return None, None
@@ -167,7 +153,7 @@ def test_model(model, loader, criterion, device, transform=None, num_class=None,
             test_correct += (predicted == batch_labels).sum().item()
             test_total += batch_labels.size(0)
 
-    # if enabled, filter out the vehicle class
+    # 如果启用过滤，则过滤掉所有 ground truth 为 "vehicle" 的记录
     if filter_vehicle_in_test:
         vehicle_idx = 44
         mask = np.array(all_test_labels) != vehicle_idx
@@ -178,21 +164,22 @@ def test_model(model, loader, criterion, device, transform=None, num_class=None,
     test_loss = test_running_loss / max(len(loader), 1)
     test_acc = test_correct / max(test_total, 1)
 
-    # only calculate the metrics for non-vehicle classes
+    # 计算指标时只考虑非 vehicle 的样本
+    # valid_labels 是原始标签中非 vehicle 的部分（例如 [0,1,2,...,43,45,46,47,48]）
     valid_labels = sorted([label for label, name in Class_names.items() if name.lower() != "vehicle"])
-
-    # if remap is not None, then remap the valid labels
     num_valid = len(valid_labels)
     class_prevalence = np.zeros(num_valid, dtype=int)
     class_bias = np.zeros(num_valid, dtype=int)
 
-    # assume all_test_labels and all_test_preds are remapped
+    # 修改：不再使用 if label < num_valid，而是根据 valid_labels 的索引进行统计
     for label in all_test_labels:
-        if label < num_valid:
-            class_prevalence[label] += 1
+        if label in valid_labels:
+            idx = valid_labels.index(label)
+            class_prevalence[idx] += 1
     for pred in all_test_preds:
-        if pred < num_valid:
-            class_bias[pred] += 1
+        if pred in valid_labels:
+            idx = valid_labels.index(pred)
+            class_bias[idx] += 1
     print(f"Class prevalence (non-vehicle): {class_prevalence}")
     print(f"Class bias (non-vehicle): {class_bias}")
 
@@ -237,7 +224,7 @@ def test_model(model, loader, criterion, device, transform=None, num_class=None,
     metrics['confusion_matrix'] = cm.tolist()
 
     os.makedirs("../test_result/json/49", exist_ok=True)
-    with open("../test_result/json/49/CE_AdamW.json", "w", encoding="utf-8") as f:
+    with open("../test_result/json/49/FL_AdamW.json", "w", encoding="utf-8") as f:
         json.dump(results, f, indent=4, ensure_ascii=False)
 
     return metrics
@@ -294,7 +281,6 @@ def main(args):
         print("finished filtering")
         test_dataset = Subset(test_dataset.dataset, filtered_test_indices)
 
-        # new mapping
         valid_old_labels = sorted([label for label, name in Class_names.items() if name.lower() != "vehicle"])
         new_mapping = {old_label: new_label for new_label, old_label in enumerate(valid_old_labels)}
         display_class_names = {new_mapping[old_label]: Class_names[old_label] for old_label in valid_old_labels}
@@ -309,12 +295,12 @@ def main(args):
     test_metrics = test_model(
         model, test_loader, criterion, device,
         transform=transform, num_class=num_class, class_names=display_class_names, remap=new_mapping,
-        filter_vehicle_in_test=(num_class != 48) # only filter vehicle if the number of classes is 48
+        filter_vehicle_in_test=(num_class != 48)
     )
     print(f"[Test]  Loss: {test_metrics['loss']:.4f} | Acc: {test_metrics['acc']:.4f} | Precision: {test_metrics['precision']:.4f} | Recall: {test_metrics['recall']:.4f} | F1: {test_metrics['f1']:.4f}")
 
     os.makedirs("../test_result/txt/49", exist_ok=True)
-    with open("../test_result/txt/49/CE_AdamW.txt", "w", encoding="utf-8") as f:
+    with open("../test_result/txt/49/FL_AdamW.txt", "w", encoding="utf-8") as f:
         f.write("==== Test Results ====\n")
         f.write(f"Loss: {test_metrics['loss']:.4f}\n")
         f.write(f"Overall Accuracy: {test_metrics['acc']:.4f}\n")
@@ -325,9 +311,9 @@ def main(args):
         header = f"{'Class':<35}{'Precision':>10}{'True Pos.':>10}{'Class Bias':>12}{'Recall':>10}{'Prevalence':>14}{'F1 Score':>10}\n"
         f.write(header)
         f.write("-" * (35+10+10+12+10+14+10) + "\n")
-        valid_labels = sorted([label for label, name in Class_names.items() if name.lower() != "vehicle"])
+        valid_labels = sorted([label for label, name in display_class_names.items() if name.lower() != "vehicle"])
         for i, lbl in enumerate(valid_labels):
-            class_name = f"Class {lbl} ({Class_names[lbl]})"
+            class_name = f"Class {lbl} ({display_class_names[lbl]})"
             line = (
                 f"{class_name:<35}"
                 f"{test_metrics['per_class_precision'][i]:>10.4f}"
@@ -341,20 +327,17 @@ def main(args):
 
     cm = np.array(test_metrics['confusion_matrix'])
     plt.figure(figsize=(12, 10))
-
-    # using log scale for better visualization
     plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues, norm=colors.LogNorm())
-
     plt.title("Confusion Matrix (non-vehicle)")
     plt.colorbar()
     tick_marks = np.arange(len(valid_labels))
-    tick_labels = [f"{label}-{Class_names[label]}" for label in valid_labels]
+    tick_labels = [f"{label}-{display_class_names[label]}" for label in valid_labels]
     plt.xticks(tick_marks, tick_labels, rotation=90, fontsize=8)
     plt.yticks(tick_marks, tick_labels, fontsize=8)
     plt.xlabel("Predicted Label")
     plt.ylabel("True Label")
     plt.tight_layout()
-    plt.savefig("../test_result/cm/49/CE_AdamW.png")
+    plt.savefig("../test_result/cm/49/FL_AdamW.png")
     plt.close()
 
 if __name__ == "__main__":
