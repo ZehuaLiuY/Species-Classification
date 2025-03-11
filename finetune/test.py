@@ -83,7 +83,7 @@ def filter_vehicle(subset):
             filtered_indices.append(idx)
     return filtered_indices
 
-def test_model(model, loader, criterion, device, transform=None, num_class=None):
+def test_model(model, loader, criterion, device, transform=None, num_class=None, class_names=None):
     """
     Test the model in a bounding-box-based workflow.
     Args:
@@ -173,8 +173,8 @@ def test_model(model, loader, criterion, device, transform=None, num_class=None)
             test_running_total += batch_num
             _, predicted = torch.max(outputs, dim=1)
 
-            predicted_class_names = [Class_names[p.item()] for p in predicted]
-            gt_class_names = [Class_names[l.item()] for l in batch_labels]
+            predicted_class_names = [class_names[p.item()] for p in predicted]
+            gt_class_names = [class_names[l.item()] for l in batch_labels]
 
             for pred_name, gt_name in zip(predicted_class_names, gt_class_names):
                 results.append({
@@ -305,8 +305,10 @@ def main(args):
         filtered_test_indices = filter_vehicle(test_dataset)
         print("finished filtering")
         test_dataset = Subset(dataset, filtered_test_indices)
+        display_class_names = {i: name for i, name in enumerate([name for name in Class_names.values() if name != 'vehicle'])}
     else:
         print("using full test dataset")
+        display_class_names = Class_names
 
     test_loader = DataLoader(
         test_dataset,
@@ -319,7 +321,9 @@ def main(args):
     criterion = torch.nn.CrossEntropyLoss()
 
     # Test the model
-    test_metrics = test_model(model, test_loader, criterion, device, transform=transform, num_class = num_class)
+    test_metrics = test_model(
+        model, test_loader, criterion, device,
+        transform=transform, num_class = num_class, class_names=display_class_names)
     print(f"[Test]  Loss: {test_metrics['loss']:.4f} | "
           f"Acc: {test_metrics['acc']:.4f} | "
           f"Precision: {test_metrics['precision']:.4f} | "
@@ -349,7 +353,7 @@ def main(args):
         f.write("-" * (35 + 10 + 10 + 12 + 10 + 14 + 10) + "\n")
 
         for i in range(num_class):
-            class_name = f"Class {i} ({Class_names[i]})"
+            class_name = f"Class {i} ({display_class_names[i]})"
             line = (
                 f"{class_name:<35}"
                 f"{test_metrics['per_class_precision'][i]:>10.4f}"
@@ -363,7 +367,7 @@ def main(args):
 
         # Add overall metrics
         plt.figure(figsize=(15, 8))
-        plt.bar(range(num_class), test_metrics['class_prevalence'], tick_label=[Class_names[i] for i in range(num_class)])
+        plt.bar(range(num_class), test_metrics['class_prevalence'], tick_label=[display_class_names[i] for i in range(num_class)])
         plt.xticks(rotation=90)
         plt.xlabel("Class")
         plt.ylabel("Number of Images")
@@ -379,8 +383,8 @@ def main(args):
     plt.title("Confusion Matrix")
     plt.colorbar()
     tick_marks = np.arange(num_class)
-    plt.xticks(tick_marks, [Class_names[i] for i in range(num_class)], rotation=90, fontsize=8)
-    plt.yticks(tick_marks, [Class_names[i] for i in range(num_class)], fontsize=8)
+    plt.xticks(tick_marks, [display_class_names[i] for i in range(num_class)], rotation=90, fontsize=8)
+    plt.yticks(tick_marks, [display_class_names[i] for i in range(num_class)], fontsize=8)
     plt.xlabel("Predicted Label")
     plt.ylabel("True Label")
     plt.tight_layout()
