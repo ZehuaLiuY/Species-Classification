@@ -11,6 +11,7 @@ import json
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import matplotlib.colors as colors
 
 Class_names = {
     0: 'american black bear', 1: 'american marten', 2: 'american red squirrel', 3: 'black-tailed jackrabbit',
@@ -340,7 +341,10 @@ def main(args):
 
     cm = np.array(test_metrics['confusion_matrix'])
     plt.figure(figsize=(12, 10))
-    plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+
+    # using log scale for better visualization
+    plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues, norm=colors.LogNorm())
+
     plt.title("Confusion Matrix (non-vehicle)")
     plt.colorbar()
     tick_marks = np.arange(len(valid_labels))
