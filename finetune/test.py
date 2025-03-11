@@ -21,7 +21,7 @@ Class_names = {
     32: "steller's jay", 33: 'striped skunk', 34: 'unidentified accipitrid', 35: 'unidentified bird',
     36: 'unidentified chipmunk', 37: 'unidentified corvus', 38: 'unidentified deer', 39: 'unidentified deer mouse',
     40: 'unidentified mouse', 41: 'unidentified pack rat', 42: 'unidentified pocket gopher', 43: 'unidentified rabbit',
-    44: 'virginia opossum', 45: 'wild boar', 46: 'wild turkey', 47: 'yellow-bellied marmot'
+    44: 'vehicle', 45: 'virginia opossum', 46: 'wild boar', 47: 'wild turkey', 48: 'yellow-bellied marmot'
 }
 
 parser = argparse.ArgumentParser(
@@ -37,8 +37,15 @@ parser.add_argument(
 
 parser.add_argument(
     "--train_type",
-    choices=['single', 'ddp'], default='ddp',
+    choices=['single', 'ddp'], default='single',
     help="Choose training type: 'single' for single GPU or 'ddp' for DistributedDataParallel"
+)
+
+parser.add_argument(
+    "--num_classes",
+    type=int,
+    default=48,
+    help="Number of classes in the model",
 )
 
 def pil_collect_fn(batch):
@@ -68,7 +75,15 @@ def collate_fn_remove_none(batch):
     imgs, tgts = zip(*filtered_batch)
     return list(imgs), list(tgts)
 
-def test_model(model, loader, criterion, device, transform=None):
+def filter_vehicle(subset):
+    filtered_indices = []
+    for idx in subset.indices:
+        _, target = subset.dataset[idx]
+        if target.get("common_name", "").lower() != "vehicle":
+            filtered_indices.append(idx)
+    return filtered_indices
+
+def test_model(model, loader, criterion, device, transform=None, num_class=None):
     """
     Test the model in a bounding-box-based workflow.
     Args:
@@ -177,8 +192,8 @@ def test_model(model, loader, criterion, device, transform=None):
     test_acc = test_correct / max(test_total, 1)
 
     # per-class metrics
-    class_prevalence = np.zeros(48, dtype=int)
-    class_bias = np.zeros(48, dtype=int)
+    class_prevalence = np.zeros(num_class, dtype=int)
+    class_bias = np.zeros(num_class, dtype=int)
     for label in all_test_labels:
         class_prevalence[label] += 1
     for pred in all_test_preds:
@@ -191,18 +206,18 @@ def test_model(model, loader, criterion, device, transform=None):
     test_f1 = f1_score(all_test_labels, all_test_preds, average='weighted', zero_division=0)
 
     per_class_prec, per_class_rec, per_class_f1, support = precision_recall_fscore_support(
-        all_test_labels, all_test_preds, labels=range(48), zero_division=0
+        all_test_labels, all_test_preds, labels=range(num_class), zero_division=0
     )
 
     # calculate per-class accuracy
-    true_positives = np.zeros(48, dtype=int)
+    true_positives = np.zeros(num_class, dtype=int)
     all_test_labels_np = np.array(all_test_labels)
     all_test_preds_np = np.array(all_test_preds)
-    for i in range(48):
+    for i in range(num_class):
         true_positives[i] = np.sum((all_test_labels_np == i) & (all_test_preds_np == i))
 
-    per_class_accuracy = np.zeros(48, dtype=float)
-    for i in range(48):
+    per_class_accuracy = np.zeros(num_class, dtype=float)
+    for i in range(num_class):
         if class_prevalence[i] > 0:
             per_class_accuracy[i] = true_positives[i] / class_prevalence[i]
         else:
@@ -221,15 +236,15 @@ def test_model(model, loader, criterion, device, transform=None):
         'true_positives': true_positives.tolist(),
         'class_bias': class_bias.tolist(),
         'class_prevalence': class_prevalence.tolist(),
-        'classes_order': list(range(48))
+        'classes_order': list(range(num_class))
     }
 
     # calculate confusion matrix
-    cm = confusion_matrix(all_test_labels, all_test_preds, labels=list(range(48)))
+    cm = confusion_matrix(all_test_labels, all_test_preds, labels=list(range(num_class)))
     metrics['confusion_matrix'] = cm.tolist()
 
     # save detailed results to JSON file
-    with open("../test_result/forcal_loss.json", "w", encoding="utf-8") as f:
+    with open("../test_result/json/FL_AdamW1.json", "w", encoding="utf-8") as f:
         json.dump(results, f, indent=4, ensure_ascii=False)
 
     return metrics
@@ -239,10 +254,12 @@ def main(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
+    num_class = args.num_classes
+
     # Load model and checkpoint
     model = pw_classification.AI4GAmazonRainforest(device=device)
     num_features = model.net.classifier.in_features
-    model.net.classifier = torch.nn.Linear(num_features, 48)
+    model.net.classifier = torch.nn.Linear(num_features, num_class)
 
     checkpoint = torch.load(args.model_path, map_location=device)
     state_dict = checkpoint.get("model", checkpoint)
@@ -282,6 +299,14 @@ def main(args):
     train_dataset, val_dataset, test_dataset = random_split(
         dataset, [train_size, val_size, test_size], g
     )
+    print("finished splitting")
+    if num_class == 48:
+        print("filtering test dataset, excluding vehicle class...")
+        filtered_test_indices = filter_vehicle(test_dataset)
+        print("finished filtering")
+        test_dataset = Subset(dataset, filtered_test_indices)
+    else:
+        print("using full test dataset")
 
     test_loader = DataLoader(
         test_dataset,
@@ -290,10 +315,11 @@ def main(args):
         collate_fn=pil_collect_fn
     )
 
+
     criterion = torch.nn.CrossEntropyLoss()
 
     # Test the model
-    test_metrics = test_model(model, test_loader, criterion, device, transform=transform)
+    test_metrics = test_model(model, test_loader, criterion, device, transform=transform, num_class = num_class)
     print(f"[Test]  Loss: {test_metrics['loss']:.4f} | "
           f"Acc: {test_metrics['acc']:.4f} | "
           f"Precision: {test_metrics['precision']:.4f} | "
@@ -301,7 +327,7 @@ def main(args):
           f"F1: {test_metrics['f1']:.4f}")
 
     # Save test results to a text file
-    with open("../test_result/forcal_loss.txt", "w", encoding="utf-8") as f:
+    with open("../test_result/FL_AdamW1.txt", "w", encoding="utf-8") as f:
         f.write("==== Test Results ====\n")
         f.write(f"Loss: {test_metrics['loss']:.4f}\n")
         f.write(f"Overall Accuracy: {test_metrics['acc']:.4f}\n")
@@ -322,7 +348,7 @@ def main(args):
         f.write(header)
         f.write("-" * (35 + 10 + 10 + 12 + 10 + 14 + 10) + "\n")
 
-        for i in range(48):
+        for i in range(num_class):
             class_name = f"Class {i} ({Class_names[i]})"
             line = (
                 f"{class_name:<35}"
@@ -337,7 +363,7 @@ def main(args):
 
         # Add overall metrics
         plt.figure(figsize=(15, 8))
-        plt.bar(range(48), test_metrics['class_prevalence'], tick_label=[Class_names[i] for i in range(48)])
+        plt.bar(range(num_class), test_metrics['class_prevalence'], tick_label=[Class_names[i] for i in range(num_class)])
         plt.xticks(rotation=90)
         plt.xlabel("Class")
         plt.ylabel("Number of Images")
@@ -352,13 +378,13 @@ def main(args):
     plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
     plt.title("Confusion Matrix")
     plt.colorbar()
-    tick_marks = np.arange(48)
-    plt.xticks(tick_marks, [Class_names[i] for i in range(48)], rotation=90, fontsize=8)
-    plt.yticks(tick_marks, [Class_names[i] for i in range(48)], fontsize=8)
+    tick_marks = np.arange(num_class)
+    plt.xticks(tick_marks, [Class_names[i] for i in range(num_class)], rotation=90, fontsize=8)
+    plt.yticks(tick_marks, [Class_names[i] for i in range(num_class)], fontsize=8)
     plt.xlabel("Predicted Label")
     plt.ylabel("True Label")
     plt.tight_layout()
-    plt.savefig("../test_result/confusion_matrix.png")
+    plt.savefig("../test_result/confusion_matrix1.png")
     plt.close()
 
 if __name__ == "__main__":
