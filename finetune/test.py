@@ -304,7 +304,7 @@ def main(args):
         print("filtering test dataset, excluding vehicle class...")
         filtered_test_indices = filter_vehicle(test_dataset)
         print("finished filtering")
-        test_dataset = Subset(dataset, filtered_test_indices)
+        test_dataset = Subset(test_dataset.dataset, filtered_test_indices)
         display_class_names = {i: name for i, name in enumerate([name for name in Class_names.values() if name != 'vehicle'])}
     else:
         print("using full test dataset")
