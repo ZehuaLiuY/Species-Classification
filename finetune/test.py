@@ -10,6 +10,7 @@ import argparse
 import json
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 
 Class_names = {
     0: 'american black bear', 1: 'american marten', 2: 'american red squirrel', 3: 'black-tailed jackrabbit',
@@ -45,7 +46,7 @@ parser.add_argument(
     "--num_classes",
     type=int,
     default=48,
-    help="Number of classes in the model",
+    help="Number of classes in the model (48 if vehicle is excluded, 49 if included)",
 )
 
 def pil_collect_fn(batch):
@@ -76,39 +77,22 @@ def collate_fn_remove_none(batch):
     return list(imgs), list(tgts)
 
 def filter_vehicle(subset):
+    """
+    filter out the vehicle class from the subset
+    """
     filtered_indices = []
-    for idx in subset.indices:
+    for idx in tqdm(subset.indices, desc="Filtering"):
         _, target = subset.dataset[idx]
         if target.get("common_name", "").lower() != "vehicle":
             filtered_indices.append(idx)
     return filtered_indices
 
-def test_model(model, loader, criterion, device, transform=None, num_class=None, class_names=None):
+def test_model(model, loader, criterion, device, transform=None, num_class=None, class_names=None, remap=None):
     """
-    Test the model in a bounding-box-based workflow.
-    Args:
-        model (nn.Module): Classification model to test.
-        loader (DataLoader): Dataloader returning a batch of (PIL.Image, target_dict).
-        criterion (nn.Module): Loss function (e.g., CrossEntropyLoss).
-        device (torch.device): CPU or GPU device.
-        transform (callable): Global transform for bounding box crops (same as train/val).
-    Returns:
-        dict: {
-            'loss': float,
-            'acc': float,
-            'precision': float,
-            'recall': float,
-            'f1': float,
-            'per_class_precision': list,
-            'per_class_recall': list,
-            'per_class_f1': list,
-            'per_class_accuracy': list,
-            'true_positives': list,
-            'class_bias': list,
-            'class_prevalence': list,
-            'classes_order': list,
-            'confusion_matrix': list of lists
-        }
+    Test the model and compute metrics.
+    If remap is not None, then each sample's original label is mapped via:
+        mapped_label = remap[original_label]
+    so that the target labels are continuous (e.g., for a 48-class model).
     """
     model.eval()
     test_running_loss = 0.0
@@ -126,12 +110,10 @@ def test_model(model, loader, criterion, device, transform=None, num_class=None,
                 continue
 
             all_crops = []
-            all_labels = []
+            batch_labels_list = []
+            batch_results = []
 
             for i in range(len(images)):
-                if images[i] is None or targets[i] is None:
-                    continue
-
                 pil_img = images[i]
                 target_dict = targets[i]
                 boxes = target_dict["boxes"]
@@ -154,16 +136,22 @@ def test_model(model, loader, criterion, device, transform=None, num_class=None,
                         cropped_tensor = transform(cropped_pil).to(device)
                     else:
                         cropped_tensor = transforms.ToTensor()(cropped_pil).to(device)
-
                     all_crops.append(cropped_tensor)
-                    all_labels.append(labels[j].item())
 
+                    # if remap is not None, then remap the label
+                    original_label = labels[j].item()
+                    if remap is not None:
+                        mapped_label = remap[original_label]
+                    else:
+                        mapped_label = original_label
+                    batch_labels_list.append(mapped_label)
+                    batch_results.append({
+                        'original_label': original_label
+                    })
             if len(all_crops) == 0:
                 continue
-
             batch_crops = torch.stack(all_crops, dim=0)
-            batch_labels = torch.tensor(all_labels, dtype=torch.long, device=device)
-
+            batch_labels = torch.tensor(batch_labels_list, dtype=torch.long, device=device)
             outputs = model(batch_crops)
             loss = criterion(outputs, batch_labels)
             batch_loss = loss.item()
@@ -173,51 +161,56 @@ def test_model(model, loader, criterion, device, transform=None, num_class=None,
             test_running_total += batch_num
             _, predicted = torch.max(outputs, dim=1)
 
-            predicted_class_names = [class_names[p.item()] for p in predicted]
-            gt_class_names = [class_names[l.item()] for l in batch_labels]
-
-            for pred_name, gt_name in zip(predicted_class_names, gt_class_names):
-                results.append({
-                    'predicted_class': pred_name,
-                    'ground_truth_class': gt_name
-                })
-
-            test_correct += (predicted == batch_labels).sum().item()
-            test_total += batch_labels.size(0)
-
             all_test_preds.extend(predicted.cpu().tolist())
             all_test_labels.extend(batch_labels.cpu().tolist())
+            for idx in range(len(batch_results)):
+                pred_label = predicted[idx].item()
+                gt_label = batch_labels[idx].item()
+                batch_results[idx]['predicted_label'] = pred_label
+                batch_results[idx]['ground_truth_label'] = gt_label
+                batch_results[idx]['predicted_class'] = class_names[pred_label]
+                batch_results[idx]['ground_truth_class'] = class_names[gt_label]
+            results.extend(batch_results)
+            test_correct += (predicted == batch_labels).sum().item()
+            test_total += batch_labels.size(0)
 
     test_loss = test_running_loss / max(len(loader), 1)
     test_acc = test_correct / max(test_total, 1)
 
-    # per-class metrics
-    class_prevalence = np.zeros(num_class, dtype=int)
-    class_bias = np.zeros(num_class, dtype=int)
-    for label in all_test_labels:
-        class_prevalence[label] += 1
-    for pred in all_test_preds:
-        class_bias[pred] += 1
-    print(f"Class prevalence: {class_prevalence}")
-    print(f"Class bias: {class_bias}")
+    # only calculate the metrics for non-vehicle classes
+    valid_labels = sorted([label for label, name in Class_names.items() if name.lower() != "vehicle"])
 
-    test_precision = precision_score(all_test_labels, all_test_preds, average='weighted', zero_division=0)
-    test_recall = recall_score(all_test_labels, all_test_preds, average='weighted', zero_division=0)
-    test_f1 = f1_score(all_test_labels, all_test_preds, average='weighted', zero_division=0)
+    # if remap is not None, then remap the valid labels
+    num_valid = len(valid_labels)
+    class_prevalence = np.zeros(num_valid, dtype=int)
+    class_bias = np.zeros(num_valid, dtype=int)
+
+    # assume all_test_labels and all_test_preds are remapped
+    for label in all_test_labels:
+        if label < num_valid:
+            class_prevalence[label] += 1
+    for pred in all_test_preds:
+        if pred < num_valid:
+            class_bias[pred] += 1
+    print(f"Class prevalence (non-vehicle): {class_prevalence}")
+    print(f"Class bias (non-vehicle): {class_bias}")
+
+    test_precision = precision_score(all_test_labels, all_test_preds, labels=list(range(num_valid)), average='weighted', zero_division=0)
+    test_recall = recall_score(all_test_labels, all_test_preds, labels=list(range(num_valid)), average='weighted', zero_division=0)
+    test_f1 = f1_score(all_test_labels, all_test_preds, labels=list(range(num_valid)), average='weighted', zero_division=0)
 
     per_class_prec, per_class_rec, per_class_f1, support = precision_recall_fscore_support(
-        all_test_labels, all_test_preds, labels=range(num_class), zero_division=0
+        all_test_labels, all_test_preds, labels=list(range(num_valid)), zero_division=0
     )
 
-    # calculate per-class accuracy
-    true_positives = np.zeros(num_class, dtype=int)
+    true_positives = np.zeros(num_valid, dtype=int)
     all_test_labels_np = np.array(all_test_labels)
     all_test_preds_np = np.array(all_test_preds)
-    for i in range(num_class):
+    for i in range(num_valid):
         true_positives[i] = np.sum((all_test_labels_np == i) & (all_test_preds_np == i))
 
-    per_class_accuracy = np.zeros(num_class, dtype=float)
-    for i in range(num_class):
+    per_class_accuracy = np.zeros(num_valid, dtype=float)
+    for i in range(num_valid):
         if class_prevalence[i] > 0:
             per_class_accuracy[i] = true_positives[i] / class_prevalence[i]
         else:
@@ -236,15 +229,15 @@ def test_model(model, loader, criterion, device, transform=None, num_class=None,
         'true_positives': true_positives.tolist(),
         'class_bias': class_bias.tolist(),
         'class_prevalence': class_prevalence.tolist(),
-        'classes_order': list(range(num_class))
+        'classes_order': list(range(num_valid))
     }
 
-    # calculate confusion matrix
-    cm = confusion_matrix(all_test_labels, all_test_preds, labels=list(range(num_class)))
+    cm = confusion_matrix(all_test_labels, all_test_preds, labels=list(range(num_valid)))
     metrics['confusion_matrix'] = cm.tolist()
 
-    # save detailed results to JSON file
-    with open("../test_result/json/FL_AdamW1.json", "w", encoding="utf-8") as f:
+    # save the results to a JSON file, for per-class plotting
+    os.makedirs("../test_result/json/48", exist_ok=True)
+    with open("../test_result/json/48/FL_AdamW_48_test.json", "w", encoding="utf-8") as f:
         json.dump(results, f, indent=4, ensure_ascii=False)
 
     return metrics
@@ -263,13 +256,10 @@ def main(args):
 
     checkpoint = torch.load(args.model_path, map_location=device)
     state_dict = checkpoint.get("model", checkpoint)
-
-    # if using DistributedDataParallel, remove the "module." prefix
     if args.train_type == 'ddp':
         state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
     else:
         state_dict = {k: v for k, v in state_dict.items() if k in model.state_dict()}
-
     model.load_state_dict(state_dict, strict=False)
     model = model.to(device)
 
@@ -287,73 +277,57 @@ def main(args):
     )
 
     print("Constructing test dataset...")
-
     g = torch.Generator().manual_seed(0)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-    # Split dataset into train, val, test
     train_size = int(0.8 * len(dataset))
     val_size = int(0.1 * len(dataset))
     test_size = len(dataset) - train_size - val_size
-    train_dataset, val_dataset, test_dataset = random_split(
-        dataset, [train_size, val_size, test_size], g
-    )
+    train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size], g)
     print("finished splitting")
+
+    # if the number of classes is 48, we need to filter out the vehicle class, and remap the labels
     if num_class == 48:
         print("filtering test dataset, excluding vehicle class...")
         filtered_test_indices = filter_vehicle(test_dataset)
         print("finished filtering")
         test_dataset = Subset(test_dataset.dataset, filtered_test_indices)
-        display_class_names = {i: name for i, name in enumerate([name for name in Class_names.values() if name != 'vehicle'])}
+
+        # new mapping
+        valid_old_labels = sorted([label for label, name in Class_names.items() if name.lower() != "vehicle"])
+        new_mapping = {old_label: new_label for new_label, old_label in enumerate(valid_old_labels)}
+        display_class_names = {new_mapping[old_label]: Class_names[old_label] for old_label in valid_old_labels}
     else:
-        print("using full test dataset")
+        print("using full test dataset, but for safety we can filter in test_model if needed")
+        new_mapping = None
         display_class_names = Class_names
 
-    test_loader = DataLoader(
-        test_dataset,
-        batch_size=8,
-        shuffle=False,
-        collate_fn=pil_collect_fn
-    )
-
-
+    test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False, collate_fn=pil_collect_fn)
     criterion = torch.nn.CrossEntropyLoss()
 
-    # Test the model
+    # 对于 48 类模型，传入 remap 参数以重新映射标签
     test_metrics = test_model(
         model, test_loader, criterion, device,
-        transform=transform, num_class = num_class, class_names=display_class_names)
-    print(f"[Test]  Loss: {test_metrics['loss']:.4f} | "
-          f"Acc: {test_metrics['acc']:.4f} | "
-          f"Precision: {test_metrics['precision']:.4f} | "
-          f"Recall: {test_metrics['recall']:.4f} | "
-          f"F1: {test_metrics['f1']:.4f}")
+        transform=transform, num_class=num_class, class_names=display_class_names, remap=new_mapping
+    )
+    print(f"[Test]  Loss: {test_metrics['loss']:.4f} | Acc: {test_metrics['acc']:.4f} | Precision: {test_metrics['precision']:.4f} | Recall: {test_metrics['recall']:.4f} | F1: {test_metrics['f1']:.4f}")
 
-    # Save test results to a text file
-    with open("../test_result/FL_AdamW1.txt", "w", encoding="utf-8") as f:
+    os.makedirs("../test_result/json/48", exist_ok=True)
+    with open("../test_result/json/48/FL_AdamW_48_test.txt", "w", encoding="utf-8") as f:
         f.write("==== Test Results ====\n")
         f.write(f"Loss: {test_metrics['loss']:.4f}\n")
         f.write(f"Overall Accuracy: {test_metrics['acc']:.4f}\n")
         f.write(f"Precision: {test_metrics['precision']:.4f}\n")
         f.write(f"Recall: {test_metrics['recall']:.4f}\n")
         f.write(f"F1: {test_metrics['f1']:.4f}\n")
-
         f.write("=== Detailed Per-Class Metrics ===\n")
-        header = (
-            f"{'Class':<35}"
-            f"{'Precision':>10}"
-            f"{'True Pos.':>10}"
-            f"{'Class Bias':>12}"
-            f"{'Recall':>10}"
-            f"{'Prevalence':>14}"
-            f"{'F1 Score':>10}\n"
-        )
+        header = f"{'Class':<35}{'Precision':>10}{'True Pos.':>10}{'Class Bias':>12}{'Recall':>10}{'Prevalence':>14}{'F1 Score':>10}\n"
         f.write(header)
-        f.write("-" * (35 + 10 + 10 + 12 + 10 + 14 + 10) + "\n")
-
-        for i in range(num_class):
-            class_name = f"Class {i} ({display_class_names[i]})"
+        f.write("-" * (35+10+10+12+10+14+10) + "\n")
+        valid_labels = sorted([label for label, name in Class_names.items() if name.lower() != "vehicle"])
+        for i, lbl in enumerate(valid_labels):
+            class_name = f"Class {lbl} ({Class_names[lbl]})"
             line = (
                 f"{class_name:<35}"
                 f"{test_metrics['per_class_precision'][i]:>10.4f}"
@@ -365,26 +339,15 @@ def main(args):
             )
             f.write(line)
 
-        # Add overall metrics
-        plt.figure(figsize=(15, 8))
-        plt.bar(range(num_class), test_metrics['class_prevalence'], tick_label=[display_class_names[i] for i in range(num_class)])
-        plt.xticks(rotation=90)
-        plt.xlabel("Class")
-        plt.ylabel("Number of Images")
-        plt.title("Class Prevalence Histogram")
-        plt.tight_layout()
-        plt.savefig("../test_result/class_prevalence_histogram.png")
-        plt.close()
-
-    # Plot confusion matrix
     cm = np.array(test_metrics['confusion_matrix'])
     plt.figure(figsize=(12, 10))
     plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
-    plt.title("Confusion Matrix")
+    plt.title("Confusion Matrix (non-vehicle)")
     plt.colorbar()
-    tick_marks = np.arange(num_class)
-    plt.xticks(tick_marks, [display_class_names[i] for i in range(num_class)], rotation=90, fontsize=8)
-    plt.yticks(tick_marks, [display_class_names[i] for i in range(num_class)], fontsize=8)
+    tick_marks = np.arange(len(valid_labels))
+    tick_labels = [f"{label}-{Class_names[label]}" for label in valid_labels]
+    plt.xticks(tick_marks, tick_labels, rotation=90, fontsize=8)
+    plt.yticks(tick_marks, tick_labels, fontsize=8)
     plt.xlabel("Predicted Label")
     plt.ylabel("True Label")
     plt.tight_layout()
