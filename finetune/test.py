@@ -45,7 +45,7 @@ parser.add_argument(
 parser.add_argument(
     "--num_classes",
     type=int,
-    default=48,
+    default=49,
     help="Number of classes in the model (48 if vehicle is excluded, 49 if included)",
 )
 
@@ -87,13 +87,7 @@ def filter_vehicle(subset):
             filtered_indices.append(idx)
     return filtered_indices
 
-def test_model(model, loader, criterion, device, transform=None, num_class=None, class_names=None, remap=None):
-    """
-    Test the model and compute metrics.
-    If remap is not None, then each sample's original label is mapped via:
-        mapped_label = remap[original_label]
-    so that the target labels are continuous (e.g., for a 48-class model).
-    """
+def test_model(model, loader, criterion, device, transform=None, num_class=None, class_names=None, remap=None, filter_vehicle_in_test=False):
     model.eval()
     test_running_loss = 0.0
     test_running_total = 0
@@ -137,8 +131,6 @@ def test_model(model, loader, criterion, device, transform=None, num_class=None,
                     else:
                         cropped_tensor = transforms.ToTensor()(cropped_pil).to(device)
                     all_crops.append(cropped_tensor)
-
-                    # if remap is not None, then remap the label
                     original_label = labels[j].item()
                     if remap is not None:
                         mapped_label = remap[original_label]
@@ -173,6 +165,14 @@ def test_model(model, loader, criterion, device, transform=None, num_class=None,
             results.extend(batch_results)
             test_correct += (predicted == batch_labels).sum().item()
             test_total += batch_labels.size(0)
+
+    # if enabled, filter out the vehicle class
+    if filter_vehicle_in_test:
+        vehicle_idx = 44
+        mask = np.array(all_test_labels) != vehicle_idx
+        all_test_labels = np.array(all_test_labels)[mask].tolist()
+        all_test_preds = np.array(all_test_preds)[mask].tolist()
+        results = [r for r in results if r['ground_truth_class'].lower() != "vehicle"]
 
     test_loss = test_running_loss / max(len(loader), 1)
     test_acc = test_correct / max(test_total, 1)
@@ -235,9 +235,8 @@ def test_model(model, loader, criterion, device, transform=None, num_class=None,
     cm = confusion_matrix(all_test_labels, all_test_preds, labels=list(range(num_valid)))
     metrics['confusion_matrix'] = cm.tolist()
 
-    # save the results to a JSON file, for per-class plotting
-    os.makedirs("../test_result/json/48", exist_ok=True)
-    with open("../test_result/json/48/FL_AdamW_48_test.json", "w", encoding="utf-8") as f:
+    os.makedirs("../test_result/json/49", exist_ok=True)
+    with open("../test_result/json/49/CE_AdamW.json", "w", encoding="utf-8") as f:
         json.dump(results, f, indent=4, ensure_ascii=False)
 
     return metrics
@@ -306,15 +305,15 @@ def main(args):
     test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False, collate_fn=pil_collect_fn)
     criterion = torch.nn.CrossEntropyLoss()
 
-    # 对于 48 类模型，传入 remap 参数以重新映射标签
     test_metrics = test_model(
         model, test_loader, criterion, device,
-        transform=transform, num_class=num_class, class_names=display_class_names, remap=new_mapping
+        transform=transform, num_class=num_class, class_names=display_class_names, remap=new_mapping,
+        filter_vehicle_in_test=(num_class != 48) # only filter vehicle if the number of classes is 48
     )
     print(f"[Test]  Loss: {test_metrics['loss']:.4f} | Acc: {test_metrics['acc']:.4f} | Precision: {test_metrics['precision']:.4f} | Recall: {test_metrics['recall']:.4f} | F1: {test_metrics['f1']:.4f}")
 
-    os.makedirs("../test_result/json/48", exist_ok=True)
-    with open("../test_result/json/48/FL_AdamW_48_test.txt", "w", encoding="utf-8") as f:
+    os.makedirs("../test_result/txt/49", exist_ok=True)
+    with open("../test_result/txt/49/CE_AdamW.txt", "w", encoding="utf-8") as f:
         f.write("==== Test Results ====\n")
         f.write(f"Loss: {test_metrics['loss']:.4f}\n")
         f.write(f"Overall Accuracy: {test_metrics['acc']:.4f}\n")
@@ -351,7 +350,7 @@ def main(args):
     plt.xlabel("Predicted Label")
     plt.ylabel("True Label")
     plt.tight_layout()
-    plt.savefig("../test_result/confusion_matrix1.png")
+    plt.savefig("../test_result/cm/49/CE_AdamW.png")
     plt.close()
 
 if __name__ == "__main__":
