@@ -1,3 +1,5 @@
+from collections import Counter
+
 import torch
 from torch.nn import CrossEntropyLoss
 from torchvision import transforms
@@ -9,7 +11,7 @@ from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import precision_score, recall_score, f1_score, average_precision_score
 from dataset import NACTIAnnotationDataset
 import numpy as np
-from lossFunction import FocalLoss
+from lossFunction import LDAMLoss
 
 import os
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
@@ -269,7 +271,7 @@ def validate(model, loader, criterion, device, writer, epoch, transform=None):
 
     # Calculate mAP
     all_val_labels_one_hot = torch.nn.functional.one_hot(
-        torch.tensor(all_val_labels), num_classes=49
+        torch.tensor(all_val_labels), num_classes=48
     ).cpu().numpy()
     all_val_probs_np = torch.tensor(all_val_probs).cpu().numpy()
 
@@ -312,7 +314,7 @@ if __name__ == "__main__":
     print(f"Using device: {device}")
 
     # Initialize the model (this is a classification model from PytorchWildlife)
-    model = pw_classification.AI4GAmazonRainforest(version="v1", device=device)
+    model = pw_classification.AI4GAmazonRainforest(device=device)
 
     transform = transforms.Compose([
         transforms.Resize((256, 256)),
@@ -325,7 +327,7 @@ if __name__ == "__main__":
     # model.num_cls = 46
     num_features = model.net.classifier.in_features
     # print(f"Number of features in the model: {num_features}") 2048
-    model.net.classifier = torch.nn.Linear(num_features, 49)
+    model.net.classifier = torch.nn.Linear(num_features, 48)
     # model.net.classifier = torch.nn.Sequential(
     #     torch.nn.Linear(num_features, 512),
     #     torch.nn.ReLU(),
@@ -362,9 +364,30 @@ if __name__ == "__main__":
     print("DataLoaders created.")
 
     model.to(device)
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
-    criterion = CrossEntropyLoss()
-    writer = SummaryWriter()
+    optimizer = optim.AdamW(model.parameters(), lr=1e-4)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='min', patience=10, factor=0.1, verbose=True
+    )
+
+    print("Initialized optimizer and scheduler.")
+    print("Initialing the LDAM Loss function...")
+    all_labels = []
+    for i in range(len(train_dataset)):
+        _, targets = train_dataset[i]
+        all_labels.extend(targets["labels"].tolist())
+
+    cls_counts = Counter(all_labels)
+    cls_num_list = [cls_counts[i] for i in range(48)]
+
+    criterion = LDAMLoss(
+        cls_num_list=cls_num_list,
+        max_m=0.5,
+        s=30,
+        weight=None,
+        reduction='mean'
+    ).to(device)
+
+    writer = SummaryWriter(log_dir="./runs_LDAM/")
     num_epochs = 1000
     global_step = 0
     patience = 10
@@ -402,7 +425,7 @@ if __name__ == "__main__":
         # save the best model
         if val_metrics['f1'] > best_f1 + delta:
             best_f1 = val_metrics['f1']
-            torch.save(model.state_dict(), "models/best_model.pth")
+            torch.save(model.state_dict(), "models/48_classes/LDAM//best_model.pth")
             print(f"Best model saved with F1: {best_f1:.4f}, in Epoch: {epoch}")
             no_improvements = 0
         else:
@@ -412,5 +435,5 @@ if __name__ == "__main__":
                 break
 
     # save final the model
-    torch.save(model.state_dict(), "models/final_model.pth")
+    torch.save(model.state_dict(), "models/48_classes/LDAM/final_model.pth")
     print("Model saved.")
