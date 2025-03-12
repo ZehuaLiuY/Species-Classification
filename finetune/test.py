@@ -46,7 +46,7 @@ parser.add_argument(
 parser.add_argument(
     "--num_classes",
     type=int,
-    default=49,
+    default=48,
     help="Number of classes in the model (48 if vehicle is excluded, 49 if included)",
 )
 
@@ -132,7 +132,7 @@ def test_model(model, loader, criterion, device, transform=None, num_class=None,
                     else:
                         cropped_tensor = transforms.ToTensor()(cropped_pil).to(device)
                     all_crops.append(cropped_tensor)
-                    # 不进行 remap（remap 为 None），直接保留原始标签
+
                     original_label = labels[j].item()
                     mapped_label = remap[original_label] if remap is not None else original_label
                     batch_labels_list.append(mapped_label)
@@ -176,13 +176,12 @@ def test_model(model, loader, criterion, device, transform=None, num_class=None,
     test_loss = test_running_loss / max(len(loader), 1)
     test_acc = test_correct / max(test_total, 1)
 
-    # 对于 49 类模型，定义有效标签为所有非 vehicle 的原始标签
+    # for 48 classes, we need to filter out the vehicle class
+    # for 49 classes, we need to exclude the vehicle class from the valid labels
     if num_class == 49:
         valid_labels = [i for i in range(49) if i != 44]
     else:
-        valid_labels = sorted([label for label, name in Class_names.items() if name.lower() != "vehicle"])
-
-    # if remap is not None, then remap the valid labels
+        valid_labels = list(range(num_class))
     num_valid = len(valid_labels)
     class_prevalence = np.zeros(num_valid, dtype=int)
     class_bias = np.zeros(num_valid, dtype=int)
@@ -239,8 +238,8 @@ def test_model(model, loader, criterion, device, transform=None, num_class=None,
     cm = confusion_matrix(all_test_labels, all_test_preds, labels=valid_labels)
     metrics['confusion_matrix'] = cm.tolist()
 
-    os.makedirs("../test_result/json/49", exist_ok=True)
-    with open("../test_result/json/49/FL_AdamW.json", "w", encoding="utf-8") as f:
+    os.makedirs("../test_result/json/48", exist_ok=True)
+    with open("../test_result/json/48/CE_Adam.json", "w", encoding="utf-8") as f:
         json.dump(results, f, indent=4, ensure_ascii=False)
 
     return metrics
@@ -316,8 +315,8 @@ def main(args):
     )
     print(f"[Test]  Loss: {test_metrics['loss']:.4f} | Acc: {test_metrics['acc']:.4f} | Precision: {test_metrics['precision']:.4f} | Recall: {test_metrics['recall']:.4f} | F1: {test_metrics['f1']:.4f}")
 
-    os.makedirs("../test_result/txt/49", exist_ok=True)
-    with open("../test_result/txt/49/FL_AdamW.txt", "w", encoding="utf-8") as f:
+    os.makedirs("../test_result/txt/48", exist_ok=True)
+    with open("../test_result/txt/48/CE_Adam.txt", "w", encoding="utf-8") as f:
         f.write("==== Test Results ====\n")
         f.write(f"Loss: {test_metrics['loss']:.4f}\n")
         f.write(f"Overall Accuracy: {test_metrics['acc']:.4f}\n")
@@ -328,8 +327,11 @@ def main(args):
         header = f"{'Class':<35}{'Precision':>10}{'True Pos.':>10}{'Class Bias':>12}{'Recall':>10}{'Prevalence':>14}{'F1 Score':>10}\n"
         f.write(header)
         f.write("-" * (35+10+10+12+10+14+10) + "\n")
-        # 对于 49 类，使用有效标签：[i for i in range(49) if i != 44]
-        valid_labels = [i for i in range(49) if i != 44]
+        # print the metrics for each class, if the number of classes is 49, we need to filter out the vehicle class
+        if num_class == 49:
+            valid_labels = [i for i in range(49) if i != 44]
+        else:
+            valid_labels = list(range(num_class))
         for i, label in enumerate(valid_labels):
             class_name = f"Class {i} ({display_class_names[label]})"
             line = (
@@ -355,7 +357,7 @@ def main(args):
     plt.xlabel("Predicted Label")
     plt.ylabel("True Label")
     plt.tight_layout()
-    plt.savefig("../test_result/cm/49/FL_AdamW.png")
+    plt.savefig("../test_result/cm/48/CE_Adam.png")
     plt.close()
 
 if __name__ == "__main__":
