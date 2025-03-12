@@ -132,11 +132,9 @@ def test_model(model, loader, criterion, device, transform=None, num_class=None,
                     else:
                         cropped_tensor = transforms.ToTensor()(cropped_pil).to(device)
                     all_crops.append(cropped_tensor)
+                    # 不进行 remap（remap 为 None），直接保留原始标签
                     original_label = labels[j].item()
-                    if remap is not None:
-                        mapped_label = remap[original_label]
-                    else:
-                        mapped_label = original_label
+                    mapped_label = remap[original_label] if remap is not None else original_label
                     batch_labels_list.append(mapped_label)
                     batch_results.append({
                         'original_label': original_label
@@ -178,8 +176,11 @@ def test_model(model, loader, criterion, device, transform=None, num_class=None,
     test_loss = test_running_loss / max(len(loader), 1)
     test_acc = test_correct / max(test_total, 1)
 
-    # only calculate the metrics for non-vehicle classes
-    valid_labels = sorted([label for label, name in Class_names.items() if name.lower() != "vehicle"])
+    # 对于 49 类模型，定义有效标签为所有非 vehicle 的原始标签
+    if num_class == 49:
+        valid_labels = [i for i in range(49) if i != 44]
+    else:
+        valid_labels = sorted([label for label, name in Class_names.items() if name.lower() != "vehicle"])
 
     # if remap is not None, then remap the valid labels
     num_valid = len(valid_labels)
@@ -188,11 +189,14 @@ def test_model(model, loader, criterion, device, transform=None, num_class=None,
 
     # assume all_test_labels and all_test_preds are remapped
     for label in all_test_labels:
-        if label < num_valid:
-            class_prevalence[label] += 1
+        if label in valid_labels:
+            idx = valid_labels.index(label)
+            class_prevalence[idx] += 1
     for pred in all_test_preds:
-        if pred < num_valid:
-            class_bias[pred] += 1
+        if pred in valid_labels:
+            idx = valid_labels.index(pred)
+            class_bias[idx] += 1
+
     print(f"Class prevalence (non-vehicle): {class_prevalence}")
     print(f"Class bias (non-vehicle): {class_bias}")
 
@@ -201,14 +205,14 @@ def test_model(model, loader, criterion, device, transform=None, num_class=None,
     test_f1 = f1_score(all_test_labels, all_test_preds, labels=valid_labels, average='weighted', zero_division=0)
 
     per_class_prec, per_class_rec, per_class_f1, support = precision_recall_fscore_support(
-        all_test_labels, all_test_preds, labels=list(range(num_valid)), zero_division=0
+        all_test_labels, all_test_preds, labels=valid_labels, zero_division=0
     )
 
     true_positives = np.zeros(num_valid, dtype=int)
     all_test_labels_np = np.array(all_test_labels)
     all_test_preds_np = np.array(all_test_preds)
-    for i in range(num_valid):
-        true_positives[i] = np.sum((all_test_labels_np == i) & (all_test_preds_np == i))
+    for i, lab in enumerate(valid_labels):
+        true_positives[i] = np.sum((all_test_labels_np == lab) & (all_test_preds_np == lab))
 
     per_class_accuracy = np.zeros(num_valid, dtype=float)
     for i in range(num_valid):
@@ -232,8 +236,7 @@ def test_model(model, loader, criterion, device, transform=None, num_class=None,
         'class_prevalence': class_prevalence.tolist(),
         'classes_order': list(range(num_valid))
     }
-
-    cm = confusion_matrix(all_test_labels, all_test_preds, labels=list(range(num_valid)))
+    cm = confusion_matrix(all_test_labels, all_test_preds, labels=valid_labels)
     metrics['confusion_matrix'] = cm.tolist()
 
     os.makedirs("../test_result/json/49", exist_ok=True)
@@ -325,9 +328,10 @@ def main(args):
         header = f"{'Class':<35}{'Precision':>10}{'True Pos.':>10}{'Class Bias':>12}{'Recall':>10}{'Prevalence':>14}{'F1 Score':>10}\n"
         f.write(header)
         f.write("-" * (35+10+10+12+10+14+10) + "\n")
-        valid_labels = sorted([label for label, name in display_class_names.items() if name.lower() != "vehicle"])
-        for i, lbl in enumerate(valid_labels):
-            class_name = f"Class {lbl} ({display_class_names[lbl]})"
+        # 对于 49 类，使用有效标签：[i for i in range(49) if i != 44]
+        valid_labels = [i for i in range(49) if i != 44]
+        for i, label in enumerate(valid_labels):
+            class_name = f"Class {i} ({display_class_names[label]})"
             line = (
                 f"{class_name:<35}"
                 f"{test_metrics['per_class_precision'][i]:>10.4f}"
@@ -341,10 +345,7 @@ def main(args):
 
     cm = np.array(test_metrics['confusion_matrix'])
     plt.figure(figsize=(12, 10))
-
-    # using log scale for better visualization
     plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues, norm=colors.LogNorm())
-
     plt.title("Confusion Matrix (non-vehicle)")
     plt.colorbar()
     tick_marks = np.arange(len(valid_labels))
