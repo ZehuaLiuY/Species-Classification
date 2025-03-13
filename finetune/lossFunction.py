@@ -40,9 +40,8 @@ class LDAMLoss(nn.Module):
         Large Margin Distance Loss
         1. calculate the margin for each class
         2. subtract the margin from the logits
-        3. apply softmaz
+        3. apply softmax
     """
-
     def __init__(self, cls_num_list, max_m=0.5, s=30, weight=None, reduction='mean'):
         super(LDAMLoss, self).__init__()
         self.cls_num_list = cls_num_list
@@ -51,26 +50,28 @@ class LDAMLoss(nn.Module):
         self.weight = weight
         self.reduction = reduction
 
+        # if the frequency of a class is 0, set it to a very small value
+        epsilon = 1e-8
+        effective_cls_num_list = [freq if freq > 0 else epsilon for freq in self.cls_num_list]
+
+        # base is the minimum frequency of all classes to the power of 0.25
+        base = min(effective_cls_num_list) ** 0.25
         m_list = []
-        base = min(self.cls_num_list) ** 0.25
-        for freq in self.cls_num_list:
-            m_list.append(self.max_m * (1 - freq**0.25 / base))
+        for freq in effective_cls_num_list:
+            # margin = max_m * (base / (freq^(0.25)))
+            m_list.append(self.max_m * (base / (freq ** 0.25)))
         self.m_list = torch.tensor(m_list, dtype=torch.float32)
 
     def forward(self, x, target):
-        index = torch.zeros_like(x, dtype=torch.uint8)
-        index.scatter_(1, target.data.view(-1,1), 1)
+        index = torch.zeros_like(x, dtype=torch.bool)
+        index.scatter_(1, target.data.view(-1, 1), True)
 
         self.m_list = self.m_list.to(x.device)
 
-        batch_m = []
-        for i in range(len(target)):
-            cls_id = target[i]
-            batch_m.append(self.m_list[cls_id])
-        batch_m = torch.stack(batch_m)
+        batch_m = self.m_list[target]
 
         x_m = x.clone()
-        x_m[index.bool()] -= batch_m
+        x_m[index] -= batch_m
 
         output = self.s * x_m
 
