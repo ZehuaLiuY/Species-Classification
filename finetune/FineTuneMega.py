@@ -1,5 +1,4 @@
 from collections import Counter
-
 import torch
 from torch.nn import CrossEntropyLoss
 from torchvision import transforms
@@ -342,13 +341,15 @@ if __name__ == "__main__":
         json_path=r"E:\result\json\detection\detection_filtered.json",
         csv_path=r"F:/DATASET/NACTI/meta/nacti_metadata_balanced.csv"
     )
+    g = torch.Generator()
+    g.manual_seed(0)
 
     # Split dataset into train, val, test
     train_size = int(0.8 * len(dataset))
     val_size = int(0.1 * len(dataset))
     test_size = len(dataset) - train_size - val_size
     train_dataset, val_dataset, test_dataset = random_split(
-        dataset, [train_size, val_size, test_size]
+        dataset, [train_size, val_size, test_size], generator=g
     )
 
     # Set DataLoader with batch_size=1
@@ -366,13 +367,13 @@ if __name__ == "__main__":
     model.to(device)
     optimizer = optim.AdamW(model.parameters(), lr=1e-4)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='min', patience=10, factor=0.1, verbose=True
+        optimizer, mode='min', patience=10, factor=0.1,
     )
 
     print("Initialized optimizer and scheduler.")
     print("Initialing the LDAM Loss function...")
     all_labels = []
-    for i in range(len(train_dataset)):
+    for i in tqdm(range(len(train_dataset)), desc="Collecting labels"):
         _, targets = train_dataset[i]
         all_labels.extend(targets["labels"].tolist())
 
@@ -392,10 +393,10 @@ if __name__ == "__main__":
     global_step = 0
     patience = 10
     no_improvements = 0
-    delta = 0.005
+    delta = 0.001
 
-    # best f1 for saving the model
-    best_f1 = 0
+    # best recall for saving the model
+    best_recall = 0
 
     for epoch in range(1, num_epochs + 1):
         # Train
@@ -423,10 +424,10 @@ if __name__ == "__main__":
               f"mAP: {val_metrics['mAP']:.4f}")
 
         # save the best model
-        if val_metrics['f1'] > best_f1 + delta:
-            best_f1 = val_metrics['f1']
+        if val_metrics['recall'] > best_recall + delta:
+            best_recall = val_metrics['recall']
             torch.save(model.state_dict(), "models/48_classes/LDAM//best_model.pth")
-            print(f"Best model saved with F1: {best_f1:.4f}, in Epoch: {epoch}")
+            print(f"Best model saved with F1: {best_recall:.4f}, in Epoch: {epoch}")
             no_improvements = 0
         else:
             no_improvements += 1
