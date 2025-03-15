@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 
 class FocalLoss(nn.Module):
     """
@@ -127,3 +128,37 @@ class BalancedSoftmaxLoss(nn.Module):
 #
 # criterion = BalancedSoftmaxLoss(cls_num_list).cuda()
 #
+
+class WeightedCrossEntropyLoss(nn.Module):
+    """
+        According to the number of samples in each class, calculate the weight of each class
+        1. calculate the effective number of samples for each class
+        2. calculate the weight of each class
+        3. use the weight to calculate the weighted cross-entropy loss
+
+        Args:
+            cls_counts: dict, number of samples for each class
+            num_classes: int, number of classes
+            beta: float, hyperparameter
+            reduction: str, 'mean' or 'sum
+
+    """
+    def __init__(self, cls_counts, num_classes, beta=0.9999, reduction='mean'):
+        super(WeightedCrossEntropyLoss, self).__init__()
+        self.num_classes = num_classes
+        self.beta = beta
+        self.reduction = reduction
+
+        # Calculate the weight of each class
+        weights = []
+        for i in range(num_classes):
+            count = cls_counts.get(i, 0)
+            # calculate the effective number of samples for each class
+            effective_num = (1 - beta ** count) / (1 - beta) if count > 0 else 0.0
+            weights.append(1.0 / (effective_num + 1e-6))
+        weights = np.array(weights, dtype=np.float32)
+        weights = weights / weights.sum() * num_classes
+        self.weight = torch.tensor(weights)
+
+    def forward(self, inputs, targets):
+        return F.cross_entropy(inputs, targets, weight=self.weight.to(inputs.device), reduction=self.reduction)
