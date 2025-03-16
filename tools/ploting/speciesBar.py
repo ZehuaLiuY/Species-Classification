@@ -2,9 +2,11 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
-# datapath = r'/Users/zehualiu/Documents/GitHub/Project-Prep/metadata/nacti_metadata_balanced.csv'
-datapath = r'/Users/zehualiu/Documents/GitHub/Project-Prep/metadata/nacti_metadata.csv'
+datapath = r'/Users/zehualiu/Documents/GitHub/Species-Classification/metadata/nacti_metadata_balanced.csv'
+# datapath = r'/Users/zehualiu/Documents/GitHub/Project-Prep/metadata/nacti_metadata.csv'
 df = pd.read_csv(datapath, low_memory=False)
+df = df[df['common_name'] != 'vehicle']
+df = df[df['common_name'] != 'empty']
 species_counts = df['common_name'].value_counts()
 
 cum_pct = species_counts.cumsum() / species_counts.sum()

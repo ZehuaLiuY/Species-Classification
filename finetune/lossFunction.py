@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 
 class FocalLoss(nn.Module):
     """
@@ -40,9 +41,8 @@ class LDAMLoss(nn.Module):
         Large Margin Distance Loss
         1. calculate the margin for each class
         2. subtract the margin from the logits
-        3. apply softmaz
+        3. apply softmax
     """
-
     def __init__(self, cls_num_list, max_m=0.5, s=30, weight=None, reduction='mean'):
         super(LDAMLoss, self).__init__()
         self.cls_num_list = cls_num_list
@@ -51,26 +51,28 @@ class LDAMLoss(nn.Module):
         self.weight = weight
         self.reduction = reduction
 
+        # if the frequency of a class is 0, set it to a very small value
+        epsilon = 1e-8
+        effective_cls_num_list = [freq if freq > 0 else epsilon for freq in self.cls_num_list]
+
+        # base is the minimum frequency of all classes to the power of 0.25
+        base = min(effective_cls_num_list) ** 0.25
         m_list = []
-        base = min(self.cls_num_list) ** 0.25
-        for freq in self.cls_num_list:
-            m_list.append(self.max_m * (1 - freq**0.25 / base))
+        for freq in effective_cls_num_list:
+            # margin = max_m * (base / (freq^(0.25)))
+            m_list.append(self.max_m * (base / (freq ** 0.25)))
         self.m_list = torch.tensor(m_list, dtype=torch.float32)
 
     def forward(self, x, target):
-        index = torch.zeros_like(x, dtype=torch.uint8)
-        index.scatter_(1, target.data.view(-1,1), 1)
+        index = torch.zeros_like(x, dtype=torch.bool)
+        index.scatter_(1, target.data.view(-1, 1), True)
 
         self.m_list = self.m_list.to(x.device)
 
-        batch_m = []
-        for i in range(len(target)):
-            cls_id = target[i]
-            batch_m.append(self.m_list[cls_id])
-        batch_m = torch.stack(batch_m)
+        batch_m = self.m_list[target]
 
         x_m = x.clone()
-        x_m[index.bool()] -= batch_m
+        x_m[index] -= batch_m
 
         output = self.s * x_m
 
@@ -126,3 +128,37 @@ class BalancedSoftmaxLoss(nn.Module):
 #
 # criterion = BalancedSoftmaxLoss(cls_num_list).cuda()
 #
+
+class WeightedCrossEntropyLoss(nn.Module):
+    """
+        According to the number of samples in each class, calculate the weight of each class
+        1. calculate the effective number of samples for each class
+        2. calculate the weight of each class
+        3. use the weight to calculate the weighted cross-entropy loss
+
+        Args:
+            cls_counts: dict, number of samples for each class
+            num_classes: int, number of classes
+            beta: float, hyperparameter
+            reduction: str, 'mean' or 'sum
+
+    """
+    def __init__(self, cls_counts, num_classes, beta=0.9999, reduction='mean'):
+        super(WeightedCrossEntropyLoss, self).__init__()
+        self.num_classes = num_classes
+        self.beta = beta
+        self.reduction = reduction
+
+        # Calculate the weight of each class
+        weights = []
+        for i in range(num_classes):
+            count = cls_counts.get(i, 0)
+            # calculate the effective number of samples for each class
+            effective_num = (1 - beta ** count) / (1 - beta) if count > 0 else 0.0
+            weights.append(1.0 / (effective_num + 1e-6))
+        weights = np.array(weights, dtype=np.float32)
+        weights = weights / weights.sum() * num_classes
+        self.weight = torch.tensor(weights)
+
+    def forward(self, inputs, targets):
+        return F.cross_entropy(inputs, targets, weight=self.weight.to(inputs.device), reduction=self.reduction)

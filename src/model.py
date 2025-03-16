@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 from torchvision import models
 from transformers import BertModel
+from torchvision.models import ResNet50_Weights
+
 
 class MultimodalLongTailClassifier(nn.Module):
     def __init__(self, num_classes, image_token_dim=768, num_attention_heads=8, dropout=0.1):
@@ -15,7 +17,9 @@ class MultimodalLongTailClassifier(nn.Module):
         super(MultimodalLongTailClassifier, self).__init__()
 
         # 1. using pre-trained ResNet-50 as image backbone
-        resnet = models.resnet50(pretrained=True)
+        # resnet = models.resnet50(pretrained=True)
+        resnet = models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
+
         # remove the last two layers (avgpool and fc) to get the backbone
         self.resnet_backbone = nn.Sequential(*list(resnet.children())[:-2])
         # project the image features to image_token_dim
@@ -82,16 +86,13 @@ class MultimodalLongTailClassifier(nn.Module):
         logits = self.classifier(fused_feature)  # [B, num_classes]
         return logits
 
-# 示例使用：
 if __name__ == "__main__":
-    # 假设类别数为 50（可根据任务修改）
     num_classes = 50
     model = MultimodalLongTailClassifier(num_classes=num_classes)
 
-    # 构造示例输入
-    dummy_image = torch.randn(2, 3, 224, 224)  # 两个样本
-    dummy_input_ids = torch.randint(0, 30522, (2, 16))  # 假设文本最大长度为16
+    dummy_image = torch.randn(2, 3, 224, 224)
+    dummy_input_ids = torch.randint(0, 30522, (2, 16))
     dummy_attention_mask = torch.ones(2, 16, dtype=torch.long)
 
     logits = model(dummy_image, dummy_input_ids, dummy_attention_mask)
-    print("Logits shape:", logits.shape)  # 应输出 [2, num_classes]
+    print("Logits shape:", logits.shape)

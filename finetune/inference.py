@@ -5,21 +5,10 @@ from torchvision import transforms
 from PytorchWildlife.models import classification as pw_classification
 import json
 from PIL import Image
-MODEL_PATH = "/models/focal_loss/best_model.pth"
+MODEL_PATH = r"G:\Code\github\Project-Prep\finetune\models\48_classes\WCE_AdamW\best_model_ddp.pth"
 
-Class_names = {
-    0: 'american black bear', 1: 'american marten', 2: 'american red squirrel', 3: 'black-tailed jackrabbit',
-    4: 'bobcat', 5: 'california ground squirrel', 6: 'california quail', 7: 'cougar', 8: 'coyote', 9: 'dark-eyed junco',
-    10: 'domestic cow', 11: 'domestic dog', 12: 'donkey', 13: 'dusky grouse', 14: 'eastern gray squirrel',
-    15: 'elk', 16: 'ermine', 17: 'european badger', 18: 'gray fox', 19: 'gray jay', 20: 'horse',
-    21: 'house wren', 22: 'long-tailed weasel', 23: 'moose', 24: 'mule deer', 25: 'nine-banded armadillo', 26: 'north american porcupine',
-    27: 'north american river otter', 28: 'raccoon', 29: 'red deer', 30: 'red fox', 31: 'snowshoe hare',
-    32: "steller's jay", 33: 'striped skunk', 34: 'unidentified accipitrid', 35: 'unidentified bird',
-    36: 'unidentified chipmunk', 37: 'unidentified corvus', 38: 'unidentified deer', 39: 'unidentified deer mouse',
-    40: 'unidentified mouse', 41: 'unidentified pack rat', 42: 'unidentified pocket gopher', 43: 'unidentified rabbit',
-    44: 'vehicle', 45: 'virginia opossum', 46: 'wild boar', 47: 'wild turkey', 48: 'yellow-bellied marmot'
-}
 
+num_class = 48
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
@@ -27,7 +16,7 @@ print(f"Using device: {device}")
 # load model
 model = pw_classification.AI4GAmazonRainforest(device=device)
 num_features = model.net.classifier.in_features
-model.net.classifier = torch.nn.Linear(num_features, 49)
+model.net.classifier = torch.nn.Linear(num_features, num_class)
 
 checkpoint = torch.load(MODEL_PATH, map_location=device)
 state_dict = checkpoint.get("model", checkpoint)
@@ -46,6 +35,36 @@ transform = transforms.Compose([
 
 image_folder = "../test_img"
 results = {}
+
+# if the num_class =48, remap the class_name index
+if num_class == 48:
+    Class_names = {
+        0: 'american black bear', 1: 'american marten', 2: 'american red squirrel', 3: 'black-tailed jackrabbit',
+        4: 'bobcat', 5: 'california ground squirrel', 6: 'california quail', 7: 'cougar', 8: 'coyote', 9: 'dark-eyed junco',
+        10: 'domestic cow', 11: 'domestic dog', 12: 'donkey', 13: 'dusky grouse', 14: 'eastern gray squirrel',
+        15: 'elk', 16: 'ermine', 17: 'european badger', 18: 'gray fox', 19: 'gray jay', 20: 'horse',
+        21: 'house wren', 22: 'long-tailed weasel', 23: 'moose', 24: 'mule deer', 25: 'nine-banded armadillo', 26: 'north american porcupine',
+        27: 'north american river otter', 28: 'raccoon', 29: 'red deer', 30: 'red fox', 31: 'snowshoe hare',
+        32: "steller's jay", 33: 'striped skunk', 34: 'unidentified accipitrid', 35: 'unidentified bird',
+        36: 'unidentified chipmunk', 37: 'unidentified corvus', 38: 'unidentified deer', 39: 'unidentified deer mouse',
+        40: 'unidentified mouse', 41: 'unidentified pack rat', 42: 'unidentified pocket gopher', 43: 'unidentified rabbit',
+        44: 'virginia opossum', 45: 'wild boar', 46: 'wild turkey', 47: 'yellow-bellied marmot'
+
+    }
+
+else:
+    Class_names = {
+        0: 'american black bear', 1: 'american marten', 2: 'american red squirrel', 3: 'black-tailed jackrabbit',
+        4: 'bobcat', 5: 'california ground squirrel', 6: 'california quail', 7: 'cougar', 8: 'coyote', 9: 'dark-eyed junco',
+        10: 'domestic cow', 11: 'domestic dog', 12: 'donkey', 13: 'dusky grouse', 14: 'eastern gray squirrel',
+        15: 'elk', 16: 'ermine', 17: 'european badger', 18: 'gray fox', 19: 'gray jay', 20: 'horse',
+        21: 'house wren', 22: 'long-tailed weasel', 23: 'moose', 24: 'mule deer', 25: 'nine-banded armadillo', 26: 'north american porcupine',
+        27: 'north american river otter', 28: 'raccoon', 29: 'red deer', 30: 'red fox', 31: 'snowshoe hare',
+        32: "steller's jay", 33: 'striped skunk', 34: 'unidentified accipitrid', 35: 'unidentified bird',
+        36: 'unidentified chipmunk', 37: 'unidentified corvus', 38: 'unidentified deer', 39: 'unidentified deer mouse',
+        40: 'unidentified mouse', 41: 'unidentified pack rat', 42: 'unidentified pocket gopher', 43: 'unidentified rabbit',
+        44: 'vehicle', 45: 'virginia opossum', 46: 'wild boar', 47: 'wild turkey', 48: 'yellow-bellied marmot'
+    }
 
 with torch.no_grad():
     for image_name in os.listdir(image_folder):
@@ -68,9 +87,9 @@ with torch.no_grad():
         }
         print(f"Processed {image_name}: {pred_class_name}")
 
-output_json_path = "inference_results.json"
-with open(output_json_path, "w") as f:
-    json.dump(results, f, indent=4)
-print(f"Results saved to {output_json_path}")
+# output_json_path = "inference_results.json"
+# with open(output_json_path, "w") as f:
+#     json.dump(results, f, indent=4)
+# print(f"Results saved to {output_json_path}")
 
 
