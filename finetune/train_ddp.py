@@ -16,6 +16,7 @@ from PytorchWildlife.models import classification as pw_classification
 from datetime import timedelta
 from collections import Counter
 from dataset import NACTIAnnotationDataset
+from lossFunction import FocalLoss
 
 world_size = int(os.getenv('SLURM_NTASKS'))
 rank = int(os.getenv('SLURM_PROCID'))
@@ -400,7 +401,7 @@ def main_worker(args):
     # ---- model ----
     model = pw_classification.AI4GAmazonRainforest(device=device)
     num_features = model.net.classifier.in_features
-    model.net.classifier = torch.nn.Linear(num_features, 49)
+    model.net.classifier = torch.nn.Linear(num_features, 48)
     model.to(device)
 
     if world_size > 1:
@@ -413,43 +414,15 @@ def main_worker(args):
 
     optimizer = optim.AdamW(model.parameters(), lr=args.lr)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='min', patience=args.patience, factor=0.1, verbose=True
+        optimizer, mode='min', patience=args.patience, factor=0.1
     )
 
-    # weight balancing cross entropy loss
-    # print(model)
-    # 1. Collect all labels from the training dataset
-    all_labels = []
-    for i in range(len(train_dataset)):
-        _, targets = train_dataset[i]
-        all_labels.extend(targets["labels"].tolist())
-
-    # 2. Count the number of samples per class
-    cls_counts = Counter(all_labels)
-    num_classes = 49  # Adjust this according to your number of classes
-
-    # 3. Calculate the effective number of samples and corresponding weights using Cui's method
-    beta = 0.9999  # A hyperparameter close to 1; can be tuned
-    weights = []
-    for i in range(num_classes):
-        count = cls_counts.get(i, 0)
-        # Compute effective number: E_n = (1 - beta^n) / (1 - beta)
-        effective_num = (1 - beta ** count) / (1 - beta) if count > 0 else 0.0
-        # Weight is defined as the inverse of the effective number of samples
-        weights.append(1.0 / (effective_num + 1e-6))
-
-    # 4. Normalize the weights so that the sum equals the number of classes (or 1, as needed)
-    weights = np.array(weights, dtype=np.float32)
-    weights = weights / weights.sum() * num_classes
-
-    # 5. Convert the weights to a torch tensor and pass them to the CrossEntropyLoss
-    weight_tensor = torch.tensor(weights, device=device)
-    criterion = torch.nn.CrossEntropyLoss(weight=weight_tensor)
+    criterion = FocalLoss(gamma=2.0, alpha=1.0, reduction='mean').to(device)
 
 
     # Create a SummaryWriter only on rank 0, so only the main process logs.
     if rank == 0:
-        writer = SummaryWriter(log_dir="./runs_ddp/")
+        writer = SummaryWriter(log_dir="./runs_ddp/FL_AdamW_scheduler/")
     else:
         writer = None
 
@@ -483,7 +456,7 @@ def main_worker(args):
             writer.add_scalar('Train/Epoch_Accuracy', train_epoch_acc, epoch)
 
             print(f"[Train] Epoch {epoch}/{args.epochs} | "
-                  f"Loss: {train_epoch_loss:.4f} | Acc: {train_epoch_acc:.4f}")
+                  f"Loss: {train_epoch_loss:.4f} | Acc: {train_epoch_acc:.4f}", flush=True)
 
         # validation phase
         val_metrics = validate(
@@ -498,30 +471,47 @@ def main_worker(args):
         # Synchronize all processes before going to the next epoch
         dist.barrier()
 
+        if rank == 0 and val_metrics is not None:
+            current_loss = val_metrics['loss']
+        else:
+            current_loss = 0.0
+
+        current_loss_tensor = torch.tensor(current_loss, dtype=torch.float32, device=device)
+        dist.broadcast(current_loss_tensor, src=0)
+
+        if rank == 0:
+            scheduler.step(current_loss_tensor.item())
+            new_lr = optimizer.param_groups[0]['lr']
+        else:
+            new_lr = 0.0
+
+        new_lr_tensor = torch.tensor(new_lr, dtype=torch.float32, device=device)
+        dist.broadcast(new_lr_tensor, src=0)
+        new_lr = new_lr_tensor.item()
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = new_lr
+
+
         if rank == 0:
             print(f"[Validation] Loss: {val_metrics['loss']:.4f} | "
                   f"Acc: {val_metrics['acc']:.4f} | "
                   f"Precision: {val_metrics['precision']:.4f} | "
                   f"Recall: {val_metrics['recall']:.4f} | "
-                  f"F1: {val_metrics['f1']:.4f}"
-                  )
-            current_loss_tensor = torch.tensor(val_metrics['loss'], dtype=torch.float32, device=device)
-            dist.broadcast(current_loss_tensor, 0)
-            scheduler.step(current_loss_tensor.item())
+                  f"F1: {val_metrics['f1']:.4f}", flush=True)
+
             # --- early stopping ---
             current_recall = val_metrics['recall']
-
             if current_recall > best_recall + args.delta:
                 best_recall = current_recall
                 non_improvement = 0
-                torch.save(model.module.state_dict(), "./model/ddp/best_model_ddp.pth")
-                print(f"Best model saved with recall: {best_recall:.4f}, at epoch: {epoch}")
+                torch.save(model.module.state_dict(), "./model/ddp/FL_AdamW_scheduler/best_model_ddp.pth")
+                print(f"Best model saved with recall: {best_recall:.4f}, at epoch: {epoch}", flush=True)
             else:
                 non_improvement += 1
                 print(f"No improvement for {non_improvement} consecutive epochs.")
 
             if non_improvement >= args.patience:
-                print(f"Early stopping triggered after {epoch} epochs without improvement.")
+                print(f"Early stopping triggered after {epoch} epochs without improvement.", flush=True)
                 early_stop_flag = 1
             else:
                 early_stop_flag = 0
@@ -533,13 +523,13 @@ def main_worker(args):
         dist.barrier()
         if early_stop_tensor.item() == 1:
             if rank == 0:
-                print(f"Early stopping triggered after {epoch} epochs without improvement.")
+                print(f"Early stopping triggered after {epoch} epochs without improvement.", flush=True)
             break
 
 
     if rank == 0:
-        torch.save(model.module.state_dict(), "./model/ddp/final_model_ddp.pth")
-        print("Final model saved.")
+        torch.save(model.module.state_dict(), "./model/ddp/FL_AdamW_scheduler/final_model_ddp.pth")
+        print("Final model saved.", flush=True)
         writer.close()  # Close the writer
 
     dist.destroy_process_group()
