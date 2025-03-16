@@ -338,7 +338,7 @@ if __name__ == "__main__":
     print("Loading dataset...")
     dataset = NACTIAnnotationDataset(
         image_dir=r"F:\DATASET\NACTI\images",
-        json_path=r"E:\result\json\detection\detection_filtered.json",
+        json_path=r"E:\result\json\detection\formatted_file.json",
         csv_path=r"F:/DATASET/NACTI/meta/nacti_metadata_balanced.csv"
     )
     g = torch.Generator()
