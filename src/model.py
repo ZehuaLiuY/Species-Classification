@@ -55,6 +55,10 @@ class MultimodalLongTailClassifier(nn.Module):
         Returns:
             logits: [B, num_classes] classification logits
         """
+        # if input_ids is None or (input_ids is not None and input_ids.size(1) == 0):
+        #     logits = self.image_model(image)
+        #     return logits
+
         # ----- iamge branch -----
         # get features, shape: [B, 2048, 7, 7]
         img_feat = self.image_backbone(image)
