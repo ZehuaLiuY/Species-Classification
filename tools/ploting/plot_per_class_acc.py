@@ -6,8 +6,8 @@ from matplotlib.ticker import LogLocator, FuncFormatter
 from matplotlib.patches import Patch
 
 # File paths for JSON results
-base_path = r'/Users/zehualiu/Documents/GitHub/Species-Classification/test_result/weightedCrossEntropy_49.json'
-improve_path = r'/Users/zehualiu/Documents/GitHub/Species-Classification/test_result/forcal_loss_49.json'
+base_path = r'G:\Code\github\Project-Prep\test_result\json\48\CE_Adam.json'
+improve_path = r'G:\Code\github\Project-Prep\test_result\json\48\WCE_AdamW.json'
 
 # Function to load JSON data into a Pandas DataFrame
 def load_json(filepath):
@@ -136,3 +136,15 @@ plot_stacked_compare(
     title="Adam vs AdamW Comparison (Cross Entropy)"
 )
 
+improvement_percentage = (accuracy_improve - accuracy_base) * 100
+
+output_file = 'improvement_percentage.txt'
+with open(output_file, 'w', encoding='utf-8') as f:
+    f.write("Per-Class Improvement Percentage:\n")
+    for cls in common_order:
+        base_acc = accuracy_base.get(cls, 0)
+        imp_acc = accuracy_improve.get(cls, 0)
+        improvement = (imp_acc - base_acc) * 100
+        f.write(f"Class {cls}: {improvement:.2f}% improvement\n")
+
+print(f"Improvement percentage details saved to {output_file}")
