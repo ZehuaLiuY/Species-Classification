@@ -336,7 +336,7 @@ def main(args):
         if rank == 0:
             print(f"[Validation] Loss: {val_metrics['loss']:.4f} | Acc: {val_metrics['acc']:.4f} | "
                   f"Precision: {val_metrics['precision']:.4f} | Recall: {val_metrics['recall']:.4f} | "
-                  f"F1: {val_metrics['f1']:.4f} | mAP: {val_metrics['mAP']:.4f}", flush=True)
+                  f"F1: {val_metrics['f1']:.4f}", flush=True)
 
             # --- early stopping ---
             # save best model based on recall
