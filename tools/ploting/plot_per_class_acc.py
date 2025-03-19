@@ -140,11 +140,18 @@ improvement_percentage = (accuracy_improve - accuracy_base) * 100
 
 output_file = 'improvement_percentage.txt'
 with open(output_file, 'w', encoding='utf-8') as f:
-    f.write("Per-Class Improvement Percentage:\n")
+
+    col_widths = [30, 15, 12]
+
+    f.write(f"{'Class'.ljust(col_widths[0])}{'Improvement (%)'.ljust(col_widths[1])}{'Sample Count'.ljust(col_widths[2])}\n")
+    f.write("-" * (sum(col_widths) + 2) + "\n")
+
     for cls in common_order:
         base_acc = accuracy_base.get(cls, 0)
         imp_acc = accuracy_improve.get(cls, 0)
         improvement = (imp_acc - base_acc) * 100
-        f.write(f"Class {cls}: {improvement:.2f}% improvement\n")
+        sample_count = class_prevalence.get(cls, 0)
 
-print(f"Improvement percentage details saved to {output_file}")
+        f.write(f"{cls.ljust(col_widths[0])}{f'{improvement:.2f}%'.rjust(col_widths[1])}{str(sample_count).rjust(col_widths[2])}\n")
+
+print(f"Improvement percentage with sample count saved to {output_file}")
