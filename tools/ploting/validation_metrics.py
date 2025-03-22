@@ -1,11 +1,12 @@
 import json
 import matplotlib.pyplot as plt
+from scipy.signal import savgol_filter
 
-prcision_path = './val_precision.json'
+precision_path = './val_precision.json'
 recall_path = './val_recall.json'
 f1_path = './val_f1.json'
 
-with open(prcision_path, "r") as f:
+with open(precision_path, "r") as f:
     precision_data = json.load(f)
 
 with open(recall_path, "r") as f:
@@ -21,29 +22,57 @@ recall_y_values = [item[2] for item in recall_data]
 f1_x_values = [item[1] for item in f1_data]
 f1_y_values = [item[2] for item in f1_data]
 
-fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6), sharex=True)
+# using Savitzky-Golay filter to smooth the data
+window_length = 11
+polyorder = 3
+smoothed_precision = savgol_filter(precision_y_values, window_length, polyorder)
+smoothed_recall = savgol_filter(recall_y_values, window_length, polyorder)
+smoothed_f1 = savgol_filter(f1_y_values, window_length, polyorder)
 
-# precision plot
-ax1.plot(precision_x_values, precision_y_values, linestyle='-', color='blue')
-ax1.set_ylabel("Precision")
-ax1.set_xlabel("Epoch")
-ax1.set_title("Precision")
-ax1.grid(True)
+fig, axes = plt.subplots(2, 3, figsize=(18, 12), sharex=True)
 
-# recall plot
-ax2.plot(recall_x_values, recall_y_values, linestyle='-', color='green')
-ax2.set_ylabel("Recall")
-ax2.set_xlabel("Epoch")
-ax2.set_title("Recall")
-ax2.grid(True)
+# unsmoothed
+axes[0, 0].plot(precision_x_values, precision_y_values, linestyle='-', color='blue')
+axes[0, 0].set_ylabel("Precision")
+axes[0, 0].set_xlabel("Epoch")
+axes[0, 0].set_title("Precision")
+axes[0, 0].grid(True)
 
-# f1 plot
-ax3.plot(f1_x_values, f1_y_values, linestyle='-', color='red', label='F1')
-ax3.set_ylabel("F1")
-ax3.set_xlabel("Epoch")
-ax3.set_title("F1")
-ax3.grid(True)
+axes[0, 1].plot(recall_x_values, recall_y_values, linestyle='-', color='green')
+axes[0, 1].set_ylabel("Recall")
+axes[0, 1].set_xlabel("Epoch")
+axes[0, 1].set_title("Recall")
+axes[0, 1].grid(True)
 
-plt.savefig('validation_metrics.pdf', dpi=600, bbox_inches='tight', pad_inches=0)
+axes[0, 2].plot(f1_x_values, f1_y_values, linestyle='-', color='red')
+axes[0, 2].set_ylabel("F1")
+axes[0, 2].set_xlabel("Epoch")
+axes[0, 2].set_title("F1")
+axes[0, 2].grid(True)
 
+# smoothed
+axes[1, 0].plot(precision_x_values, smoothed_precision, linestyle='-', color='blue')
+axes[1, 0].set_ylabel("Smoothed Precision")
+axes[1, 0].set_xlabel("Epoch")
+axes[1, 0].set_title("Smoothed Precision")
+axes[1, 0].grid(True)
+
+axes[1, 1].plot(recall_x_values, smoothed_recall, linestyle='-', color='green')
+axes[1, 1].set_ylabel("Smoothed Recall")
+axes[1, 1].set_xlabel("Epoch")
+axes[1, 1].set_title("Smoothed Recall")
+axes[1, 1].grid(True)
+
+axes[1, 2].plot(f1_x_values, smoothed_f1, linestyle='-', color='red')
+axes[1, 2].set_ylabel("Smoothed F1")
+axes[1, 2].set_xlabel("Epoch")
+axes[1, 2].set_title("Smoothed F1")
+axes[1, 2].grid(True)
+
+for ax in axes.flatten():
+    ax.axvline(x=26, color='grey', linestyle='--', label='Early stopping Point')
+    ax.legend()
+
+plt.tight_layout()
+plt.savefig('validation_metrics_smoothed.pdf', dpi=600, bbox_inches='tight', pad_inches=0)
 plt.show()
