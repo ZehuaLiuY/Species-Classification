@@ -293,19 +293,17 @@ class ENA24Dataset(Dataset):
         sample = self.samples[idx]
         file_name = sample["file_name"]
         target = sample["target"]
-
         img_path = os.path.join(self.image_dir, file_name)
-        image = Image.open(img_path).convert("RGB")
-
+        try:
+            image = Image.open(img_path).convert("RGB")
+        except FileNotFoundError:
+            print(f"Warning: {img_path} not found, skipping sample {idx}")
+            return (None, None)
         if self.transforms:
             image = self.transforms(image)
-
         return image, target
 
-# dataset = ENA24Dataset(
-#     image_dir=r"F:/DATASET/ENA24-Detection/images",
-#     json_path=r"F:/DATASET/ENA24-Detection/metadata/ena24.json"
-# )
+
 
 # for idx in range(5):
 #     try:
