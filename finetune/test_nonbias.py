@@ -13,7 +13,6 @@ import os
 import matplotlib.colors as colors
 from collections import Counter
 
-# nacti 类别字典（仅取名称）
 Class_names = {
     0: 'american black bear', 1: 'american marten', 2: 'american red squirrel', 3: 'black-tailed jackrabbit',
     4: 'bobcat', 5: 'california ground squirrel', 6: 'california quail', 7: 'cougar', 8: 'coyote', 9: 'dark-eyed junco',
@@ -366,18 +365,34 @@ def main(args):
             f.write(line)
 
     cm = np.array(test_metrics['confusion_matrix'])
+
+    # removing the sum of 0 rows and columns
+    row_sum = cm.sum(axis=1)
+    col_sum = cm.sum(axis=0)
+
+    nonzero_indices = [i for i in range(len(valid_labels)) if (row_sum[i] != 0 or col_sum[i] != 0)]
+
+    cm_reduced = cm[nonzero_indices, :][:, nonzero_indices]
+
+    tick_labels_reduced = [
+        f"{valid_labels[i]}-{display_class_names.get(valid_labels[i], 'Unknown')}"
+        for i in nonzero_indices
+    ]
+
     plt.figure(figsize=(12, 10))
-    plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues, norm=colors.LogNorm())
-    plt.title("Confusion Matrix (non-vehicle)")
+    plt.imshow(cm_reduced, interpolation='nearest', cmap=plt.cm.Blues)
+    plt.title("Confusion Matrix (non-vehicle) [Reduced]")
     plt.colorbar()
-    tick_marks = np.arange(len(valid_labels))
-    tick_labels = [f"{label}-{display_class_names.get(label, 'Unknown')}" for label in valid_labels]
-    plt.xticks(tick_marks, tick_labels, rotation=90, fontsize=8)
-    plt.yticks(tick_marks, tick_labels, fontsize=8)
+
+    tick_marks_reduced = np.arange(len(nonzero_indices))
+    plt.xticks(tick_marks_reduced, tick_labels_reduced, rotation=90, fontsize=8)
+    plt.yticks(tick_marks_reduced, tick_labels_reduced, fontsize=8)
+
     plt.xlabel("Predicted Label")
     plt.ylabel("True Label")
     plt.tight_layout()
-    plt.savefig("../test_result/nonbiased/cm/48/CE_Adam.png")
+
+    plt.savefig("../test_result/nonbiased/cm/48/CE_Adam_reduced.png")
     plt.close()
 
 if __name__ == "__main__":
