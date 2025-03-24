@@ -284,7 +284,7 @@ def main(args):
 
     dataset = ENA24Dataset(
         image_dir=r"F:/DATASET/ENA24-Detection/images",
-        json_path=r"F:/DATASET/ENA24-Detection/metadata/ena24.json"
+        json_path=r"F:/DATASET/ENA24-Detection/metadata/ena24_updated.json"
     )
     print("Constructing test dataset...")
 
@@ -310,21 +310,6 @@ def main(args):
             filtered_indices.append(i)
     print("Samples after filtering:", len(filtered_indices))
     filtered_dataset = Subset(dataset, filtered_indices)
-
-    unique_labels = set()
-    for i in filtered_indices:
-        _, target = dataset[i]
-        if target is None:
-            continue
-        if target["labels"].numel() > 0:
-            label = target["labels"][0].item()
-            cname = dataset.categories.get(label, "").lower()
-            if cname in desired_names:
-                unique_labels.add(label)
-    unique_labels = sorted(unique_labels)
-    new_mapping = {old_label: new_label for new_label, old_label in enumerate(unique_labels)}
-    display_class_names = {new_mapping[old_label]: dataset.categories.get(old_label, "") for old_label in unique_labels}
-    print("Remap:", display_class_names)
 
     if num_class == 48:
         print("filtering test dataset, excluding vehicle class...")
