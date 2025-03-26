@@ -6,7 +6,7 @@ from matplotlib.ticker import LogLocator, FuncFormatter
 from matplotlib.patches import Patch
 
 # File paths for JSON results
-base_path = r'G:\Code\github\Project-Prep\test_result\json\48\CE_Adam.json'
+base_path = r'G:\Code\github\Project-Prep\test_result\json\48\CE_AdamW.json'
 improve_path = r'G:\Code\github\Project-Prep\test_result\json\48\WCE_AdamW.json'
 
 # Function to load JSON data into a Pandas DataFrame
@@ -96,8 +96,8 @@ def plot_stacked_compare(accuracy_baseline, accuracy_improved, class_counts, ord
     ax1.grid(axis="y", linestyle="--", alpha=0.5)
 
     # Create custom legend items for baseline, positive diff, and negative diff
-    baseline_patch = Patch(facecolor='orange', edgecolor='black', label='Adam (Baseline)')
-    pos_patch = Patch(facecolor='steelblue', edgecolor='black', label='AdamW (Improved)')
+    baseline_patch = Patch(facecolor='orange', edgecolor='black', label='Cross-entropy')
+    pos_patch = Patch(facecolor='steelblue', edgecolor='black', label='Weighted Cross-entropy')
     neg_patch = Patch(facecolor='crimson', edgecolor='black', label='Negative Difference')
     ax1.legend(handles=[baseline_patch, pos_patch, neg_patch], loc="upper right", framealpha=0.5)
 
@@ -121,7 +121,7 @@ def plot_stacked_compare(accuracy_baseline, accuracy_improved, class_counts, ord
     ax2.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f'$10^{{{int(np.log10(y))}}}$' if y > 0 else "0"))
 
     plt.tight_layout()
-    plt.savefig('per_class_comp.pdf', dpi=600, bbox_inches='tight', pad_inches=0)
+    plt.savefig('comp_.pdf', dpi=600, bbox_inches='tight', pad_inches=0)
     plt.show()
 
 
@@ -133,12 +133,12 @@ plot_stacked_compare(
     order=common_order,
     label_baseline="Adam",
     label_improved="AdamW",
-    title="Adam vs AdamW Comparison (Cross Entropy)"
+    title="Per-class accuracy: Cross-entropy vs Weighted Cross-entropy Comparison (AdamW Optimiser)"
 )
 
 improvement_percentage = (accuracy_improve - accuracy_base) * 100
 
-output_file = 'improvement_percentage.txt'
+output_file = 'CE_WCE.txt'
 with open(output_file, 'w', encoding='utf-8') as f:
 
     col_widths = [30, 15, 12]
