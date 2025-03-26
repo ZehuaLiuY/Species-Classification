@@ -10,15 +10,20 @@ df = pd.DataFrame(data)
 def get_last_word(s):
     return s.split()[-1].lower()
 
-df["correct"] = df.apply(lambda row: get_last_word(row["predicted_class"]) == get_last_word(row["ground_truth_class"]), axis=1)
-df["gt_last_word"] = df["ground_truth_class"].apply(get_last_word)
+# df["correct"] = df.apply(lambda row: get_last_word(row["predicted_class"]) == get_last_word(row["ground_truth_class"]), axis=1)
+# df["gt_last_word"] = df["ground_truth_class"].apply(get_last_word)
+#
+# grouped = df.groupby("gt_last_word")["correct"].agg(["sum", "count"])
+# grouped["accuracy"] = grouped["sum"] / grouped["count"]
 
-grouped = df.groupby("gt_last_word")["correct"].agg(["sum", "count"])
+df["correct"] = df["predicted_class"] == df["ground_truth_class"]
+
+grouped = df.groupby("ground_truth_class")["correct"].agg(["sum", "count"])
 grouped["accuracy"] = grouped["sum"] / grouped["count"]
 
 grouped = grouped.sort_values(by="count", ascending=False)
 
-fig, ax1 = plt.subplots(figsize=(10, 6))
+fig, ax1 = plt.subplots(figsize=(12, 6))
 
 ax1.bar(grouped.index, grouped["accuracy"], color='skyblue', edgecolor='black')
 ax1.set_xlabel("Species")
