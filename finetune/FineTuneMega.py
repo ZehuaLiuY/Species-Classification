@@ -372,23 +372,25 @@ if __name__ == "__main__":
 
     print("Initialized optimizer and scheduler.")
     print("Initialing the LDAM Loss function...")
-    all_labels = []
-    for i in tqdm(range(len(train_dataset)), desc="Collecting labels"):
-        _, targets = train_dataset[i]
-        all_labels.extend(targets["labels"].tolist())
+    # all_labels = []
+    # for i in tqdm(range(len(train_dataset)), desc="Collecting labels"):
+    #     _, targets = train_dataset[i]
+    #     all_labels.extend(targets["labels"].tolist())
+    #
+    # cls_counts = Counter(all_labels)
+    # cls_num_list = [cls_counts[i] for i in range(48)]
+    #
+    # criterion = LDAMLoss(
+    #     cls_num_list=cls_num_list,
+    #     max_m=0.5,
+    #     s=30,
+    #     weight=None,
+    #     reduction='mean'
+    # ).to(device)
 
-    cls_counts = Counter(all_labels)
-    cls_num_list = [cls_counts[i] for i in range(48)]
+    criterion = CrossEntropyLoss()
 
-    criterion = LDAMLoss(
-        cls_num_list=cls_num_list,
-        max_m=0.5,
-        s=30,
-        weight=None,
-        reduction='mean'
-    ).to(device)
-
-    writer = SummaryWriter(log_dir="./runs_LDAM/")
+    writer = SummaryWriter(log_dir="./logs/run_CE_AdamW/")
     num_epochs = 1000
     global_step = 0
     patience = 10
@@ -426,8 +428,8 @@ if __name__ == "__main__":
         # save the best model
         if val_metrics['recall'] > best_recall + delta:
             best_recall = val_metrics['recall']
-            torch.save(model.state_dict(), "models/48_classes/LDAM//best_model.pth")
-            print(f"Best model saved with F1: {best_recall:.4f}, in Epoch: {epoch}")
+            torch.save(model.state_dict(), "models/48_classes/CE_AdamW/best_model.pth")
+            print(f"Best model saved with Recall: {best_recall:.4f}, in Epoch: {epoch}")
             no_improvements = 0
         else:
             no_improvements += 1
@@ -436,5 +438,5 @@ if __name__ == "__main__":
                 break
 
     # save final the model
-    torch.save(model.state_dict(), "models/48_classes/LDAM/final_model.pth")
+    torch.save(model.state_dict(), "models/48_classes/CE/final_model.pth")
     print("Model saved.")
