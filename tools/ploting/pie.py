@@ -20,9 +20,10 @@ for cat_id, count in annotation_counts.items():
     labels.append(cat_names.get(cat_id, str(cat_id)))
     sizes.append(count)
 
-plt.figure(figsize=(9,9))
+plt.figure(figsize=(9,5))
 plt.pie(sizes, labels=labels, autopct="%1.1f%%", startangle=140)
 plt.title("Unbiased Test Set Species Distribution")
-plt.axis("equal")
+plt.gca().set_aspect(0.6)
 plt.savefig("Unbiased Distribution.pdf", dpi=600)
 plt.show()
+
