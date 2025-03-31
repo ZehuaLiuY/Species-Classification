@@ -25,7 +25,7 @@ grouped = grouped.sort_values(by="count", ascending=False)
 
 fig, ax1 = plt.subplots(figsize=(12, 6))
 
-ax1.bar(grouped.index, grouped["accuracy"], color='skyblue', edgecolor='black')
+ax1.bar(grouped.index, grouped["accuracy"], color='orange', edgecolor='black')
 ax1.set_xlabel("Species")
 ax1.set_ylabel("Accuracy")
 ax1.set_title("Per-Class Accuracy with Sample Count")
@@ -37,4 +37,5 @@ ax2.plot(grouped.index, grouped["count"], color='black', linestyle='-')
 ax2.set_ylabel("Sample Count")
 
 plt.tight_layout()
+plt.savefig("per_species_acc.pdf", dpi=600)
 plt.show()
