@@ -366,31 +366,31 @@ if __name__ == "__main__":
 
     model.to(device)
     optimizer = optim.AdamW(model.parameters(), lr=1e-4)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='min', patience=10, factor=0.1,
-    )
+    # scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+    #     optimizer, mode='min', patience=10, factor=0.1,
+    # )
 
     print("Initialized optimizer and scheduler.")
     print("Initialing the LDAM Loss function...")
-    # all_labels = []
-    # for i in tqdm(range(len(train_dataset)), desc="Collecting labels"):
-    #     _, targets = train_dataset[i]
-    #     all_labels.extend(targets["labels"].tolist())
-    #
-    # cls_counts = Counter(all_labels)
-    # cls_num_list = [cls_counts[i] for i in range(48)]
-    #
-    # criterion = LDAMLoss(
-    #     cls_num_list=cls_num_list,
-    #     max_m=0.5,
-    #     s=30,
-    #     weight=None,
-    #     reduction='mean'
-    # ).to(device)
 
-    criterion = CrossEntropyLoss()
+    all_labels = []
+    for i in tqdm(range(len(train_dataset)), desc="Collecting labels"):
+        _, targets = train_dataset[i]
+        all_labels.extend(targets["labels"].tolist())
 
-    writer = SummaryWriter(log_dir="./logs/run_CE_AdamW/")
+    cls_counts = Counter(all_labels)
+    cls_num_list = [cls_counts[i] for i in range(48)]
+
+    criterion = LDAMLoss(
+        cls_num_list=cls_num_list,
+        max_m=0.5,
+        s=30,
+        weight=None,
+        reduction='mean'
+    ).to(device)
+
+
+    writer = SummaryWriter(log_dir="./logs/run_LDAM/")
     num_epochs = 1000
     global_step = 0
     patience = 10
@@ -428,7 +428,7 @@ if __name__ == "__main__":
         # save the best model
         if val_metrics['recall'] > best_recall + delta:
             best_recall = val_metrics['recall']
-            torch.save(model.state_dict(), "models/48_classes/CE_AdamW/best_model.pth")
+            torch.save(model.state_dict(), "models/48_classes/LDAM/best_model.pth")
             print(f"Best model saved with Recall: {best_recall:.4f}, in Epoch: {epoch}")
             no_improvements = 0
         else:
@@ -438,5 +438,5 @@ if __name__ == "__main__":
                 break
 
     # save final the model
-    torch.save(model.state_dict(), "models/48_classes/CE/final_model.pth")
+    torch.save(model.state_dict(), "models/48_classes/LDAM/final_model.pth")
     print("Model saved.")
