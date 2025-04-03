@@ -37,11 +37,11 @@ def extract_images_for_class(subset, class_label, image_dir, dest_folder):
             else:
                 print(f"image not exist：{src_path}")
 
-desired_label = 1
+desired_label = 10
 
-train_dest = r"E:\result\set\train_label_1"
-val_dest = r"E:\result\set\val_label_1"
-test_dest = r"E:\result\set\test_label_1"
+train_dest = r"E:\result\set\train_label_10"
+val_dest = r"E:\result\set\val_label_10"
+test_dest = r"E:\result\set\test_label_10"
 # make sure the destination folders exist
 os.makedirs(train_dest, exist_ok=True)
 os.makedirs(val_dest, exist_ok=True)
