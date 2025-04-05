@@ -1,0 +1,140 @@
+import json
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib.patches import Patch
+
+# File paths for JSON results
+base_path = r'G:\Code\github\Project-Prep\test_result\nonbiased\json\48\CE_AdamW_Sc.json'
+improve_path = r'G:\Code\github\Project-Prep\test_result\nonbiased\json\48\LADM_sc.json'
+
+# Function to load JSON data into a Pandas DataFrame
+def load_json(filepath):
+    with open(filepath, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return pd.DataFrame(data)
+
+# Load data for different loss functions
+df_base = load_json(base_path)          # Data for baseline
+df_improve = load_json(improve_path)    # Data for improvements
+
+# Function to compute per-class accuracy
+def compute_accuracy(df):
+    # Create a boolean column 'correct' indicating if the predicted class equals the ground truth
+    df["correct"] = df["predicted_class"] == df["ground_truth_class"]
+    print(f"Correct predicted number: {df['correct'].sum()} / {len(df)}")
+    # Return the mean correctness (accuracy) for each ground truth class
+    return df.groupby("ground_truth_class")["correct"].mean()
+
+print("Cross Entropy (Baseline):")
+accuracy_base = compute_accuracy(df_base)
+print("Weight Balanced Cross Entropy:")
+accuracy_improve = compute_accuracy(df_improve)
+
+# Get class prevalence (frequency) from the baseline DataFrame and determine the display order
+class_prevalence = df_base['ground_truth_class'].value_counts()
+# Filter out classes with zero prevalence
+class_prevalence = class_prevalence[class_prevalence != 0]
+common_order = class_prevalence.index
+
+# Function to plot a stacked bar chart comparing per-class accuracies with a linear-scale overlay of sample counts
+def plot_stacked_compare(accuracy_baseline, accuracy_improved, class_counts, order,
+                         label_baseline="Baseline",
+                         label_improved="Improved",
+                         title="Stacked Accuracy Comparison"):
+    """
+    Plot a stacked bar chart comparing per-class accuracies between a baseline and an improved method.
+    The baseline accuracy is displayed as the bottom bar, and the difference (improved - baseline) is stacked on top.
+    A line plot (on a secondary y-axis) shows the number of samples per class using a linear scale.
+
+    Parameters:
+      accuracy_baseline: pd.Series of baseline accuracies (indexed by class name/ID)
+      accuracy_improved: pd.Series of improved accuracies
+      class_counts:      pd.Series or array with sample counts for each class
+      order:             Ordered list/index of classes to display
+      label_baseline:    Label for the baseline bar
+      label_improved:    Label for the difference bar (improved - baseline)
+      title:             Plot title
+    """
+    # Reindex series to the specified order
+    acc_base_ordered = accuracy_baseline.reindex(order)
+    acc_imp_ordered  = accuracy_improved.reindex(order)
+    counts_ordered   = class_counts.reindex(order) if hasattr(class_counts, 'reindex') else np.array(class_counts)[order]
+
+    # Calculate the difference (improved - baseline)
+    diff = acc_imp_ordered - acc_base_ordered
+
+    # Set color based on difference: positive diff uses steelblue, negative diff uses crimson
+    diff_colors = ['steelblue' if d >= 0 else 'crimson' for d in diff.values]
+
+    x = np.arange(len(order))
+    fig, ax1 = plt.subplots(figsize=(14, 6))
+
+    # Plot baseline accuracy as the bottom bar
+    ax1.bar(x, acc_base_ordered.values,
+            color='orange',
+            edgecolor='black',
+            alpha=0.7,
+            label=label_baseline)
+
+    # Plot the difference as a stacked bar on top of the baseline
+    ax1.bar(x, diff.values,
+            bottom=acc_base_ordered.values,
+            color=diff_colors,
+            edgecolor='black',
+            alpha=0.7,
+            label=label_improved)
+
+    # Configure the left y-axis for accuracy
+    ax1.set_ylabel("Accuracy")
+    ax1.set_ylim(0, 1.0)
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(order, rotation=45, ha="right")
+    ax1.set_title(title)
+    ax1.grid(axis="y", linestyle="--", alpha=0.5)
+
+    # Create custom legend items for baseline, positive diff, and negative diff
+    baseline_patch = Patch(facecolor='orange', edgecolor='black', label='Cross-Entropy')
+    pos_patch = Patch(facecolor='steelblue', edgecolor='black', label='LDAM Loss')
+    neg_patch = Patch(facecolor='crimson', edgecolor='black', label='Negative Difference')
+    ax1.legend(handles=[baseline_patch, pos_patch, neg_patch], loc="upper right", framealpha=0.5)
+
+    # Create a secondary y-axis for the class sample counts
+    ax2 = ax1.twinx()
+    ax2.set_ylabel("#Images")
+    # Plot the sample counts as a black line with markers
+    ax2.plot(x, counts_ordered, color='black', linestyle='-')
+
+    # 使用线性坐标轴，并设置y轴范围
+    ax2.set_ylim(0, counts_ordered.max()*1.2)
+
+    plt.tight_layout()
+    plt.savefig('comp_.pdf', dpi=600, bbox_inches='tight', pad_inches=0)
+    plt.show()
+
+# Plot comparison
+plot_stacked_compare(
+    accuracy_baseline=accuracy_base,
+    accuracy_improved=accuracy_improve,
+    class_counts=class_prevalence,
+    order=common_order,
+    label_baseline="Adam",
+    label_improved="AdamW",
+    title="Per-class accuracy: Cross-entropy vs LDAM Loss Comparison (AdamW Optimiser)"
+)
+
+improvement_percentage = (accuracy_improve - accuracy_base) * 100
+
+output_file = 'CE_WCE.txt'
+with open(output_file, 'w', encoding='utf-8') as f:
+    col_widths = [30, 15, 12]
+    f.write(f"{'Class'.ljust(col_widths[0])}{'Improvement (%)'.ljust(col_widths[1])}{'Sample Count'.ljust(col_widths[2])}\n")
+    f.write("-" * (sum(col_widths) + 2) + "\n")
+    for cls in common_order:
+        base_acc = accuracy_base.get(cls, 0)
+        imp_acc = accuracy_improve.get(cls, 0)
+        improvement = (imp_acc - base_acc) * 100
+        sample_count = class_prevalence.get(cls, 0)
+        f.write(f"{cls.ljust(col_widths[0])}{f'{improvement:.2f}%'.rjust(col_widths[1])}{str(sample_count).rjust(col_widths[2])}\n")
+
+print(f"Improvement percentage with sample count saved to {output_file}")
