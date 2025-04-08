@@ -248,7 +248,7 @@ def test_model(model, loader, criterion, device, transform=None, num_class=None,
     metrics['confusion_matrix'] = cm.tolist()
 
     os.makedirs("../test_result/nonbiased/json/48", exist_ok=True)
-    with open("../test_result/nonbiased/json/48/LDAM.json", "w", encoding="utf-8") as f:
+    with open("../test_result/nonbiased/json/48/LDAM_sc.json", "w", encoding="utf-8") as f:
         json.dump(results, f, indent=4, ensure_ascii=False)
 
     return metrics
@@ -336,7 +336,7 @@ def main(args):
     print(f"[Test]  Loss: {test_metrics['loss']:.4f} | Acc: {test_metrics['acc']:.4f} | Precision: {test_metrics['precision']:.4f} | Recall: {test_metrics['recall']:.4f} | F1: {test_metrics['f1']:.4f}")
 
     os.makedirs("../test_result/nonbiased/txt/48", exist_ok=True)
-    with open("../test_result/nonbiased/txt/48/LDAM.txt", "w", encoding="utf-8") as f:
+    with open("../test_result/nonbiased/txt/48/LDAM_sc.txt", "w", encoding="utf-8") as f:
         f.write("==== Test Results ====\n")
         f.write(f"Loss: {test_metrics['loss']:.4f}\n")
         f.write(f"Overall Accuracy: {test_metrics['acc']:.4f}\n")
@@ -392,7 +392,7 @@ def main(args):
     plt.ylabel("True Label")
     plt.tight_layout()
 
-    plt.savefig("../test_result/nonbiased/cm/48/LDAM.pdf", dpi=600, pad_inches=0)
+    plt.savefig("../test_result/nonbiased/cm/48/LDAM_sc.pdf", dpi=600, pad_inches=0)
     plt.close()
 
 if __name__ == "__main__":
