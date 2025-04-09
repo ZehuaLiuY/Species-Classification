@@ -4,6 +4,7 @@ import torch
 import torch.optim as optim
 import torch.distributed as dist
 import torch.multiprocessing as mp
+from torch.nn import CrossEntropyLoss
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torchvision import transforms
 from torch.utils.data import random_split, DataLoader
@@ -417,7 +418,8 @@ def main_worker(args):
         optimizer, mode='min', patience=args.patience, factor=0.1
     )
 
-    criterion = FocalLoss(gamma=2.0, alpha=1.0, reduction='mean').to(device)
+    # cross entropy baseline
+    criterion = CrossEntropyLoss()
 
 
     # Create a SummaryWriter only on rank 0, so only the main process logs.
