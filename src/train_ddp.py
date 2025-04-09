@@ -15,7 +15,9 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
 from datetime import timedelta
-
+from lossFunction import LDAMLoss
+from collections import Counter
+from tqdm import tqdm
 
 world_size = int(os.getenv('SLURM_NTASKS'))
 rank = int(os.getenv('SLURM_PROCID'))
@@ -281,8 +283,27 @@ def main(args):
     print("Model initialised.")
 
     # --- optimizer & loss functions ---
-    criterion = nn.CrossEntropyLoss()
+    all_labels = []
+    for i in tqdm(range(len(train_dataset)), desc="Collecting labels"):
+        _, targets = train_dataset[i]
+        all_labels.extend(targets["labels"].tolist())
+
+    cls_counts = Counter(all_labels)
+    cls_num_list = [cls_counts[i] for i in range(48)]
+
+    criterion = LDAMLoss(
+        cls_num_list=cls_num_list,
+        max_m=0.5,
+        s=30,
+        weight=None,
+        reduction='mean'
+    ).to(device)
+
+
     optimizer = optim.AdamW(model.parameters(), lr=args.lr)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='min', patience=args.patience, factor=0.1
+    )
 
     # --- training ---
     if rank == 0:
@@ -314,10 +335,12 @@ def main(args):
             log_interval=10)
 
         if rank == 0:
-            # log epoch-level metrics
-            print(f"[Train] Epoch {epoch}/{num_epochs} | Loss: {train_loss:.4f} | Acc: {train_acc:.4f}", flush=True)
-            writer.add_scalar('Train/Loss_epoch', train_loss, epoch)
-            writer.add_scalar('Train/Accuracy_epoch', train_acc, epoch)
+            # Log epoch-level stats
+            writer.add_scalar('Train/Epoch_Loss', train_loss, epoch)
+            writer.add_scalar('Train/Epoch_Accuracy', train_acc, epoch)
+
+            print(f"[Train] Epoch {epoch}/{args.epochs} | "
+                  f"Loss: {train_loss:.4f} | Acc: {train_acc:.4f}", flush=True)
 
 
         # validation phase
@@ -333,10 +356,30 @@ def main(args):
         # Sync all processes before going to the next epoch
         dist.barrier()
 
+        if rank == 0 and val_metrics is not None:
+            current_loss = val_metrics['loss']
+        else:
+            current_loss = 0.0
+
+        current_loss_tensor = torch.tensor(current_loss, dtype=torch.float32, device=device)
+        dist.broadcast(current_loss_tensor, src=0)
+
+        if rank == 0:
+            scheduler.step(current_loss_tensor.item())
+            new_lr = optimizer.param_groups[0]['lr']
+        else:
+            new_lr = 0.0
+
+        new_lr_tensor = torch.tensor(new_lr, dtype=torch.float32, device=device)
+        dist.broadcast(new_lr_tensor, src=0)
+        new_lr = new_lr_tensor.item()
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = new_lr
+
         if rank == 0:
             print(f"[Validation] Loss: {val_metrics['loss']:.4f} | Acc: {val_metrics['acc']:.4f} | "
                   f"Precision: {val_metrics['precision']:.4f} | Recall: {val_metrics['recall']:.4f} | "
-                  f"F1: {val_metrics['f1']:.4f} | mAP: {val_metrics['mAP']:.4f}", flush=True)
+                  f"F1: {val_metrics['f1']:.4f}", flush=True)
 
             # --- early stopping ---
             # save best model based on recall
@@ -380,11 +423,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train Multimodal Long Tail Classifier with Pre-cropped Regions")
     parser.add_argument("--num_classes", type=int, default=48, help="Number of classes")
     parser.add_argument("--batch_size", type=int, default=8, help="Batch size for training")
-    parser.add_argument("--epochs", type=int, default=10, help="Number of training epochs")
+    parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--save_dir", type=str, default="./checkpoints", help="Directory to save model checkpoints")
     parser.add_argument("--patience", type=int, default=10, help="Early stopping patience")
-    parser.add_argument("--delta", type=float, default=0.005, help="Minimum improvement delta to reset patience")
+    parser.add_argument("--delta", type=float, default=0.001, help="Minimum improvement delta to reset patience")
     args = parser.parse_args()
 
     os.makedirs(args.save_dir, exist_ok=True)
