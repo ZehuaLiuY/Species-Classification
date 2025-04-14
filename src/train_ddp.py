@@ -394,12 +394,13 @@ def main(args):
             else:
                 no_improvements += 1
                 print(f"No improvements for {no_improvements} consecutive epoch. Current best recall: {best_recall:.4f}", flush=True)
-                if no_improvements >= patience:
-                    print(f"Early stopping at Epoch: {epoch}", flush=True)
-                    early_stop_flag = 1
-                    break
-                else:
-                    early_stop_flag = 0
+
+            if no_improvements >= patience:
+                print(f"Early stopping at Epoch: {epoch}", flush=True)
+                early_stop_flag = 1
+                break
+            else:
+                early_stop_flag = 0
         else:
             early_stop_flag = 0
 
