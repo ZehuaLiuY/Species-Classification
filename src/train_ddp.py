@@ -100,20 +100,11 @@ def validate(
 ):
     torch.cuda.synchronize()
     model.eval()
-    val_running_loss = 0.0
-    val_running_samples = 0
-    val_correct = 0
-    total = 0
 
     validation_loss = torch.zeros(len(dataloader), dtype=torch.float32, device=device)
     val_running_total = torch.tensor(0, dtype=torch.int32, device=device)
     val_correct = torch.tensor(0, dtype=torch.int32, device=device)
     val_total = torch.tensor(0, dtype=torch.int32, device=device)
-
-
-    all_val_preds = []
-    all_val_labels = []
-    all_val_probs = []
 
     local_preds = []
     local_labels = []
@@ -431,7 +422,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     os.makedirs(args.save_dir, exist_ok=True)
-    main(args)
 
     print("DEBUG:", os.getenv('SLURM_NNODES'), os.getenv('SLURM_NTASKS'),
           os.getenv('SLURM_PROCID'), os.getenv('SLURM_LOCALID'))
