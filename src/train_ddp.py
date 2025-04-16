@@ -19,6 +19,7 @@ from lossFunction import LDAMLoss
 from collections import Counter
 from tqdm import tqdm
 
+
 world_size = int(os.getenv('SLURM_NTASKS'))
 rank = int(os.getenv('SLURM_PROCID'))
 local_rank = int(os.getenv('SLURM_LOCALID'))
@@ -276,8 +277,9 @@ def main(args):
     # --- optimizer & loss functions ---
     all_labels = []
     for i in tqdm(range(len(train_dataset)), desc="Collecting labels"):
-        _, targets = train_dataset[i]
-        all_labels.extend(targets["labels"].tolist())
+        _, _, targets = train_dataset[i]
+        # all_labels.extend(targets["labels"].tolist())
+        all_labels.extend(targets)
 
     cls_counts = Counter(all_labels)
     cls_num_list = [cls_counts[i] for i in range(48)]
