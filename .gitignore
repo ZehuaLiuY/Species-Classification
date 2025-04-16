@@ -169,3 +169,9 @@ cython_debug/
 /test_img/
 /src/runs/
 /finetune/logs/
+/src/models/
+
+# all pdf files
+*.pdf
+# all txt files
+*.txt
