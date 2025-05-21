@@ -16,10 +16,6 @@ Species-Classification/
 ├─ reference/               # Reference materials and literature
 │
 ├─ src/                     # Proposed Method Source code
-│   ├─ data/                # Data processing modules
-│   ├─ models/              # Model weight files
-│   ├─ train/               # Training scripts
-│   └─ utils/               # Utility functions
 │
 ├─ tools/                   # Additional tools and scripts
 │
@@ -45,15 +41,19 @@ Use **Conda** or any other virtual environment tool.
 # Example using Conda
 conda create -n species_classification python=3.9 -y
 conda activate species_classification
+pip install pytorch-wildlife
 ```
+## Data preparation 
+Put the paths(Absolute is recommended) in the initialisation of the dataset class, normally in the main function of the training script.
 
 ## Training and Testing
 
-### **Train the Model (Single GPU)**
+### **Fine-tune the Model (Single GPU)**
 
 For single-GPU training, run:
 
 ```bash
+cd finetune
 python FineTuneMega.py
 ```
 
@@ -68,7 +68,7 @@ To run the training on **BlueCrystal4**, submit the SLURM job:
 ```bash
 sbatch run.sh
 ```
-
+It will use 11 GPUs to train the model.
 
 ### **Test the Model**
 
