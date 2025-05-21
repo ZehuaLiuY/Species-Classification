@@ -175,3 +175,5 @@ cython_debug/
 *.pdf
 # all txt files
 *.txt
+# all json files
+*.json
