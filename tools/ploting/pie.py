@@ -22,7 +22,7 @@ for cat_id, count in annotation_counts.items():
 
 plt.figure(figsize=(9,5))
 plt.pie(sizes, labels=labels, autopct="%1.1f%%", startangle=140)
-plt.title("Unbiased Test Set Species Distribution")
+plt.title("Reduced-bias Test Set Species Distribution")
 plt.gca().set_aspect(0.6)
 plt.savefig("Unbiased Distribution.pdf", dpi=600)
 plt.show()

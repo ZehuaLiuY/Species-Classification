@@ -57,5 +57,5 @@ tail_patch = mpatches.Patch(color='pink',      label='Tail (>50%)')
 few_patch  = mpatches.Patch(color='green',     label='Few-shot (≤20)')
 plt.legend(handles=[head_patch, tail_patch, few_patch], fontsize=32, handleheight=3, handlelength=4)
 
-plt.savefig('species_count_vertical.pdf', dpi=2400)
-# plt.show()
+# plt.savefig('species_count_vertical.pdf', dpi=2400)
+plt.show()
