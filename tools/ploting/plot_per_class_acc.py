@@ -6,8 +6,8 @@ from matplotlib.ticker import LogLocator, FuncFormatter
 from matplotlib.patches import Patch
 
 # File paths for JSON results
-base_path = r'G:\Code\github\Project-Prep\test_result\json\48\CE_AdamW.json'
-improve_path = r'G:\Code\github\Project-Prep\test_result\json\48\WCE_AdamW.json'
+base_path = r'/Users/zehualiu/Desktop/test_result/json/48/CE_Adam.json'
+improve_path = r'/Users/zehualiu/Desktop/test_result/json/48/LDAM_sc.json'
 
 # Function to load JSON data into a Pandas DataFrame
 def load_json(filepath):
@@ -42,7 +42,7 @@ common_order = class_prevalence.index
 # Function to plot a stacked bar chart comparing per-class accuracies with a log-scale overlay of sample counts
 def plot_stacked_compare(accuracy_baseline, accuracy_improved, class_counts, order,
                          label_baseline="Baseline",
-                         label_improved="Improved",
+                         label_improved="Best Configuration",
                          title="Stacked Accuracy Comparison"):
     """
     Plot a stacked bar chart comparing per-class accuracies between a baseline and an improved method.
@@ -96,10 +96,10 @@ def plot_stacked_compare(accuracy_baseline, accuracy_improved, class_counts, ord
     ax1.grid(axis="y", linestyle="--", alpha=0.5)
 
     # Create custom legend items for baseline, positive diff, and negative diff
-    baseline_patch = Patch(facecolor='orange', edgecolor='black', label='Cross-entropy')
-    pos_patch = Patch(facecolor='steelblue', edgecolor='black', label='Weighted Cross-entropy')
-    neg_patch = Patch(facecolor='crimson', edgecolor='black', label='Negative Difference')
-    ax1.legend(handles=[baseline_patch, pos_patch, neg_patch], loc="upper right", framealpha=0.5)
+    baseline_patch = Patch(facecolor='orange', edgecolor='black', label='Basement')
+    pos_patch = Patch(facecolor='steelblue', edgecolor='black', label='Best Improvement')
+    # neg_patch = Patch(facecolor='crimson', edgecolor='black', label='Negative Difference')
+    ax1.legend(handles=[baseline_patch, pos_patch], loc="upper right", framealpha=0.5)
 
     # Create a secondary y-axis for the class sample counts
     ax2 = ax1.twinx()
@@ -131,27 +131,27 @@ plot_stacked_compare(
     accuracy_improved=accuracy_improve,
     class_counts=class_prevalence,
     order=common_order,
-    label_baseline="Adam",
-    label_improved="AdamW",
-    title="Per-class accuracy: Cross-entropy vs Weighted Cross-entropy Comparison (AdamW Optimiser)"
+    label_baseline="Baseline",
+    label_improved="Best Configuration",
+    # title="Per-class accuracy: Cross-entropy vs Weighted Cross-entropy Comparison (AdamW Optimiser)"
 )
 
-improvement_percentage = (accuracy_improve - accuracy_base) * 100
-
-output_file = 'CE_WCE.txt'
-with open(output_file, 'w', encoding='utf-8') as f:
-
-    col_widths = [30, 15, 12]
-
-    f.write(f"{'Class'.ljust(col_widths[0])}{'Improvement (%)'.ljust(col_widths[1])}{'Sample Count'.ljust(col_widths[2])}\n")
-    f.write("-" * (sum(col_widths) + 2) + "\n")
-
-    for cls in common_order:
-        base_acc = accuracy_base.get(cls, 0)
-        imp_acc = accuracy_improve.get(cls, 0)
-        improvement = (imp_acc - base_acc) * 100
-        sample_count = class_prevalence.get(cls, 0)
-
-        f.write(f"{cls.ljust(col_widths[0])}{f'{improvement:.2f}%'.rjust(col_widths[1])}{str(sample_count).rjust(col_widths[2])}\n")
-
-print(f"Improvement percentage with sample count saved to {output_file}")
+# improvement_percentage = (accuracy_improve - accuracy_base) * 100
+#
+# output_file = 'CE_WCE.txt'
+# with open(output_file, 'w', encoding='utf-8') as f:
+#
+#     col_widths = [30, 15, 12]
+#
+#     f.write(f"{'Class'.ljust(col_widths[0])}{'Improvement (%)'.ljust(col_widths[1])}{'Sample Count'.ljust(col_widths[2])}\n")
+#     f.write("-" * (sum(col_widths) + 2) + "\n")
+#
+#     for cls in common_order:
+#         base_acc = accuracy_base.get(cls, 0)
+#         imp_acc = accuracy_improve.get(cls, 0)
+#         improvement = (imp_acc - base_acc) * 100
+#         sample_count = class_prevalence.get(cls, 0)
+#
+#         f.write(f"{cls.ljust(col_widths[0])}{f'{improvement:.2f}%'.rjust(col_widths[1])}{str(sample_count).rjust(col_widths[2])}\n")
+#
+# print(f"Improvement percentage with sample count saved to {output_file}")
