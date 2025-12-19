@@ -1,6 +1,8 @@
 # Species and Long-Tail Recognition
 
-My MEng Individual Project with Innovation case code repo.
+## Model Weight
+
+For the fine-tuned model weights of the results illustrated on the paper, please contact me via email at: liuzehuazxy@163.com
 
 ## Project Structure
 
