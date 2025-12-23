@@ -2,6 +2,7 @@
 
 **Research code for long-tailed wildlife species classification (NACTI) and robustness evaluation.**  
 Paper: *Long-tailed Species Recognition in the NACTI Wildlife Dataset* (arXiv:2510.21657)
+![Overview](./readme_files/overview.png)
 
 [![arXiv](https://img.shields.io/badge/arXiv-2510.21657-b31b1b.svg)](https://arxiv.org/abs/2510.21657)
 
@@ -72,7 +73,8 @@ pip install pytorch-wildlife
 Species-Classification/
 ├─ envs/                    # Environment configs (optional but recommended)
 ├─ finetune/                # Fine-tuning scripts (entrypoints live here)
-│  └─ FineTuneMega.py
+│  └─ FineTuneMega.py (main single-GPU training script)
+│  └─ train_ddp.py (multi-GPU example)
 ├─ reference/               # Paper references / notes
 ├─ src/                     # Core code for methods / training utilities
 ├─ tools/                   # Helper scripts (pre/post-processing, utilities)
@@ -123,6 +125,7 @@ python FineTuneMega.py
 This is the simplest single-command entrypoint to start fine-tuning (after you configure dataset paths inside the script).
 
 ---
+![Overview](./readme_files/image.png)
 
 ## Training
 
