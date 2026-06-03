@@ -56,7 +56,7 @@ Create the environment directly from the YAML to ensure reproducibility.
 ``` bash
 # Option A (recommended): create from YAML
 conda env create -f envs/pt-wl.yml
-conda activate <ENV_NAME>
+conda activate pytorch-wildlife
 ```
 
 ### Option B (fallback): minimal environment
