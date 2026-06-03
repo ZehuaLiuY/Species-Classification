@@ -55,7 +55,7 @@ Create the environment directly from the YAML to ensure reproducibility.
 
 ``` bash
 # Option A (recommended): create from YAML
-conda env create -f envs/<YOUR_ENV_FILE>.yml
+conda env create -f envs/pt-wl.yml
 conda activate <ENV_NAME>
 ```
 
