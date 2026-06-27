@@ -65,21 +65,24 @@ def filter_dataset(input_json_path, output_json_path):
 
     print(f"Original sample: {len(original_annotations)} -> filtered samples: {len(filtered_annotations)}")
 
-    new_data = {
-        "images": filtered_images,
-        "annotations": filtered_annotations,
-        "categories": filtered_categories
-    }
+    if len(filtered_annotations) != 0:
+        new_data = {
+            "images": filtered_images,
+            "annotations": filtered_annotations,
+            "categories": filtered_categories
+        }
 
-    if 'info' in data:
-        new_data['info'] = data['info']
-    if 'licenses' in data:
-        new_data['licenses'] = data['licenses']
+        if 'info' in data:
+            new_data['info'] = data['info']
+        if 'licenses' in data:
+            new_data['licenses'] = data['licenses']
 
-    with open(output_json_path, 'w', encoding='utf-8') as f:
-        json.dump(new_data, f, indent=4)
+        with open(output_json_path, 'w', encoding='utf-8') as f:
+            json.dump(new_data, f, indent=4)
 
-    print(f"\n saving new json file to: {output_json_path}")
+        print(f"\n saving new json file to: {output_json_path}")
+    else:
+        print("No valid annotations found after filtering. No output file created.")
 
 if __name__ == "__main__":
-    filter_dataset(r"H:\Downloads\Download\caltech_bboxes_20200316.json", r"H:\Downloads\Download\caltech_bboxes_updated.json")
+    filter_dataset(r"H:\Downloads\Download\missouri_camera_traps_set1.json", r"H:\Downloads\Download\missouri_camera_traps_set1_updated.json")

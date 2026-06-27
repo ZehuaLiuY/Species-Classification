@@ -282,8 +282,8 @@ def main(args):
     ])
 
     dataset = ENA24Dataset(
-        image_dir=r"F:/DATASET/ENA24-Detection/images",
-        json_path=r"F:/DATASET/ENA24-Detection/metadata/ena24_updated.json"
+        image_dir=r"H:\Downloads\Download\ena24",
+        json_path=r"E:/DATASET/ENA24-Detection/metadata/ena24_updated.json"
     )
     print("Constructing test dataset...")
 
