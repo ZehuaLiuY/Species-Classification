@@ -28,16 +28,18 @@ def filter_dataset(input_json_path, output_json_path):
     filtered_categories = []
 
     for cat in original_categories:
-        cat_name = cat['name']
+        raw_cat_name = cat['name']
         old_id = cat['id']
+        normalized_cat_name = raw_cat_name.replace('_', ' ').strip().lower()
 
-        if cat_name in name_to_new_id:
-            new_id = name_to_new_id[cat_name]
+        if normalized_cat_name in name_to_new_id:
+            new_id = name_to_new_id[normalized_cat_name]
             old_id_to_new_id[old_id] = new_id
 
             filtered_categories.append({
                 "id": new_id,
-                "name": cat_name
+                # save blank as NACTI metadata format
+                "name": normalized_cat_name
             })
 
     print(f"Overlapped {len(filtered_categories)} samples")
