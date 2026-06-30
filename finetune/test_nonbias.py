@@ -4,7 +4,7 @@ from PytorchWildlife.models import classification as pw_classification
 from tqdm import tqdm
 from torch.utils.data import DataLoader, Subset
 from sklearn.metrics import precision_score, recall_score, f1_score, precision_recall_fscore_support, confusion_matrix
-from dataset import ENA24Dataset
+from dataset import ReducedBiasedDataset
 import argparse
 import json
 import numpy as np
@@ -247,8 +247,8 @@ def test_model(model, loader, criterion, device, transform=None, num_class=None,
     cm = confusion_matrix(all_test_labels, all_test_preds, labels=valid_labels)
     metrics['confusion_matrix'] = cm.tolist()
 
-    os.makedirs("../test_result/nonbiased/json/48", exist_ok=True)
-    with open("../test_result/nonbiased/json/48/LDAM_sc.json", "w", encoding="utf-8") as f:
+    os.makedirs("../test_result/nonbiased_cct/json/48", exist_ok=True)
+    with open("../test_result/nonbiased_cct/json/48/LDAM_sc_MCT.json", "w", encoding="utf-8") as f:
         json.dump(results, f, indent=4, ensure_ascii=False)
 
     return metrics
@@ -281,9 +281,9 @@ def main(args):
                              std=[0.229, 0.224, 0.225]),
     ])
 
-    dataset = ENA24Dataset(
-        image_dir=r"H:\Downloads\Download\ena24",
-        json_path=r"E:/DATASET/ENA24-Detection/metadata/ena24_updated.json"
+    dataset = ReducedBiasedDataset(
+        image_dir=r"H:\Downloads\Download\missouri_camera_traps_images",
+        json_path=r"H:\Downloads\Download\missouri_camera_traps_set1_updated.json"
     )
     print("Constructing test dataset...")
 
@@ -335,8 +335,8 @@ def main(args):
     )
     print(f"[Test]  Loss: {test_metrics['loss']:.4f} | Acc: {test_metrics['acc']:.4f} | Precision: {test_metrics['precision']:.4f} | Recall: {test_metrics['recall']:.4f} | F1: {test_metrics['f1']:.4f}")
 
-    os.makedirs("../test_result/nonbiased/txt/48", exist_ok=True)
-    with open("../test_result/nonbiased/txt/48/LDAM_sc.txt", "w", encoding="utf-8") as f:
+    os.makedirs("../test_result/nonbiased_cct/txt/48", exist_ok=True)
+    with open("../test_result/nonbiased_cct/txt/48/LDAM_sc_MCT.txt", "w", encoding="utf-8") as f:
         f.write("==== Test Results ====\n")
         f.write(f"Loss: {test_metrics['loss']:.4f}\n")
         f.write(f"Overall Accuracy: {test_metrics['acc']:.4f}\n")
@@ -392,7 +392,7 @@ def main(args):
     plt.ylabel("True Label")
     plt.tight_layout()
 
-    plt.savefig("../test_result/nonbiased/cm/48/LDAM_sc.pdf", dpi=600, pad_inches=0)
+    plt.savefig("../test_result/nonbiased_cct/cm/48/LDAM_sc_MCT.pdf", dpi=600, pad_inches=0)
     plt.close()
 
 if __name__ == "__main__":

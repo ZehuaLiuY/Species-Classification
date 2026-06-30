@@ -201,18 +201,22 @@ class NACTIAnnotationDataset(Dataset):
 #         print(e)
 
 
-class ENA24Dataset(Dataset):
+class ReducedBiasedDataset(Dataset):
     def __init__(self, image_dir, json_path, transforms=None, allow_empty=False):
         self.image_dir = image_dir
         self.transforms = transforms
         self.allow_empty = allow_empty
 
-        with open(json_path, 'r') as f:
+        with open(json_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
 
         self.id_to_filename = {}
+        self.id_to_size = {}
+
         for img in data["images"]:
-            self.id_to_filename[str(img["id"])] = img["file_name"]
+            img_id = str(img["id"])
+            self.id_to_filename[img_id] = os.path.normpath(img["file_name"])
+            self.id_to_size[img_id] = (img.get("width", 0), img.get("height", 0))
 
         self.categories = {}
         if "categories" in data:
@@ -228,6 +232,12 @@ class ENA24Dataset(Dataset):
             if file_name not in self.filename_to_anns:
                 self.filename_to_anns[file_name] = []
             bbox = ann.get("bbox", [])
+
+            if len(bbox) != 4:
+                w, h = self.id_to_size.get(img_id, (0, 0))
+                if w > 0 and h > 0:
+                    bbox = [0, 0, w, h]
+
             if len(bbox) == 4:
                 x, y, w, h = bbox
                 if w > 0 and h > 0:
@@ -249,11 +259,14 @@ class ENA24Dataset(Dataset):
                 boxes.append(ann["bbox"])
                 labels.append(ann["label"])
                 scores.append(ann["score"])
+
             if len(boxes) == 0 and not self.allow_empty:
                 continue
+
             boxes_tensor = torch.tensor(boxes, dtype=torch.float32) if boxes else torch.empty((0, 4), dtype=torch.float32)
             labels_tensor = torch.tensor(labels, dtype=torch.int64) if labels else torch.empty((0,), dtype=torch.int64)
             scores_tensor = torch.tensor(scores, dtype=torch.float32) if scores else torch.empty((0,), dtype=torch.float32)
+
             target = {
                 "boxes": boxes_tensor,
                 "labels": labels_tensor,
@@ -264,66 +277,25 @@ class ENA24Dataset(Dataset):
                 "target": target
             })
 
-        print(f"[ena24Dataset] Constructed {len(self.samples)} samples after filtering.")
+        print(f"[Dataset] Constructed {len(self.samples)} samples after filtering.")
 
     def __len__(self):
         return len(self.samples)
 
-    # Crop Version
-    # def __getitem__(self, idx):
-    #     sample = self.samples[idx]
-    #     file_name = sample["file_name"]
-    #     target = sample["target"]
-    #
-    #     img_path = os.path.join(self.image_dir, file_name)
-    #     image = Image.open(img_path).convert("RGB")
-    #
-    #     cropped_imgs = []
-    #     boxes = target["boxes"]
-    #     if boxes.numel() > 0:
-    #         boxes = boxes.numpy()
-    #         for bbox in boxes:
-    #             x, y, w, h = bbox
-    #             cropped = image.crop((x, y, x+w, y+h))
-    #             if self.transforms:
-    #                 cropped = self.transforms(cropped)
-    #             cropped_imgs.append(cropped)
-    #     return cropped_imgs, target
     def __getitem__(self, idx):
         sample = self.samples[idx]
         file_name = sample["file_name"]
         target = sample["target"]
+
         img_path = os.path.join(self.image_dir, file_name)
+
         try:
             image = Image.open(img_path).convert("RGB")
         except FileNotFoundError:
             print(f"Warning: {img_path} not found, skipping sample {idx}")
             return (None, None)
+
         if self.transforms:
             image = self.transforms(image)
+
         return image, target
-
-
-
-# for idx in range(5):
-#     try:
-#         image, target = dataset[idx]
-#         print(f"Image loaded: {image.size}, Target: {target}")
-#     except FileNotFoundError as e:
-#         print(e)
-
-# for idx in range(5):
-#     try:
-#         cropped_imgs, target = dataset[idx]
-#         print(f"Sample {idx}: Number of crops = {len(cropped_imgs)}")
-#         print(f"Target: {target}")
-#         if cropped_imgs:
-#             img = cropped_imgs[0]
-#             if isinstance(img, torch.Tensor):
-#                 img = img.permute(1, 2, 0).numpy()
-#             plt.figure()
-#             plt.imshow(img)
-#             plt.title(f"Sample {idx} - Crop 0")
-#             plt.show()
-#     except Exception as e:
-#         print(f"Error in sample {idx}: {e}")
