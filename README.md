@@ -13,7 +13,7 @@ Paper: *Long-tailed Species Recognition in the NACTI Wildlife Dataset* (arXiv:25
 This repository contains the training and evaluation code used in our study on **long-tailed species recognition** for large-scale camera-trap data.  
 The focus is on improving **minority-class performance** under severe class imbalance, and assessing **robustness under distribution shift**.
 
-If you use this codebase in your work, please cite the paper (see [Citation](#citation)).
+If you use this codebase or model weights in your work, please cite the paper (see [Citation](#citation)).
 
 ---
 
@@ -181,13 +181,16 @@ To reproduce results reported in the paper, you generally need:
 If you use this repository, please cite:
 
 ```bibtex
-@misc{liu2025longtailednacti,
-  title        = {Long-tailed Species Recognition in the NACTI Wildlife Dataset},
-  author       = {Liu, Zehua and Burghardt, Tilo},
-  year         = {2025},
-  eprint       = {2510.21657},
-  archivePrefix= {arXiv},
-  primaryClass = {cs.CV}
+@conference{visapp26,
+  author={Zehua Liu and Tilo Burghardt},
+  title={Long-Tailed Species Recognition in the NACTI Wildlife Dataset},
+  booktitle={Proceedings of the 21st International Conference on Computer Vision Theory and Applications - Volume 2: VISAPP},
+  year={2026},
+  pages={357-365},
+  publisher={SciTePress},
+  organization={INSTICC},
+  doi={10.5220/0014342200004084},
+  isbn={978-989-758-804-4},
 }
 ```
 
@@ -198,5 +201,6 @@ If you use this repository, please cite:
 For questions, issues, or collaboration:
 
 * GitHub Issues: [https://github.com/ZehuaLiuY/Species-Classification/issues](https://github.com/ZehuaLiuY/Species-Classification/issues)
+* Model weights: https://huggingface.co/Terrifie/NACTI_Species_Recognition_model
 
-* Email: Zehua Liu (liuzehuazxy@163.com) for model weights requests.
+* Email: Zehua Liu (liuzehuazxy@163.com) 
