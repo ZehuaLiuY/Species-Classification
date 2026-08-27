@@ -3,10 +3,10 @@ import torch.nn as nn
 from torchvision import models
 from transformers import BertModel
 from torchvision.models import ResNet50_Weights
-
+from PytorchWildlife.models import classification as pw_classification
 
 class MultimodalLongTailClassifier(nn.Module):
-    def __init__(self, num_classes, image_token_dim=768, num_attention_heads=8, dropout=0.1):
+    def __init__(self, num_classes, image_token_dim=768, num_attention_heads=8, dropout=0.1, device='cuda'):
         """
         Args:
             num_classes: number of classes for classification
@@ -18,10 +18,10 @@ class MultimodalLongTailClassifier(nn.Module):
 
         # 1. using pre-trained ResNet-50 as image backbone
         # resnet = models.resnet50(pretrained=True)
-        resnet = models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
-
+        # resnet = models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
+        self.image_model = pw_classification.AI4GAmazonRainforest(device=device)
         # remove the last two layers (avgpool and fc) to get the backbone
-        self.resnet_backbone = nn.Sequential(*list(resnet.children())[:-2])
+        self.image_backbone = nn.Sequential(*list(self.image_model.net.feature.children())[:-2])
         # project the image features to image_token_dim
         self.image_proj = nn.Linear(2048, image_token_dim)
 
@@ -55,9 +55,13 @@ class MultimodalLongTailClassifier(nn.Module):
         Returns:
             logits: [B, num_classes] classification logits
         """
+        # if input_ids is None or (input_ids is not None and input_ids.size(1) == 0):
+        #     logits = self.image_model(image)
+        #     return logits
+
         # ----- iamge branch -----
         # get features, shape: [B, 2048, 7, 7]
-        img_feat = self.resnet_backbone(image)
+        img_feat = self.image_backbone(image)
         B, C, H, W = img_feat.shape
         # reshape to [B, 49, 2048]（7*7=49）
         img_feat = img_feat.view(B, C, H * W).permute(0, 2, 1)
@@ -87,8 +91,9 @@ class MultimodalLongTailClassifier(nn.Module):
         return logits
 
 if __name__ == "__main__":
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     num_classes = 50
-    model = MultimodalLongTailClassifier(num_classes=num_classes)
+    model = MultimodalLongTailClassifier(num_classes=num_classes, device=device)
 
     dummy_image = torch.randn(2, 3, 224, 224)
     dummy_input_ids = torch.randint(0, 30522, (2, 16))
