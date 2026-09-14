@@ -2,9 +2,13 @@
 
 **Research code for long-tailed wildlife species classification (NACTI) and robustness evaluation.**  
 Paper: *Long-tailed Species Recognition in the NACTI Wildlife Dataset* (arXiv:2510.21657)
+and extended version: *Benchmarking NACTI Species Recognition in Long-Tailed Regimes* (arXiv:2607.18033)
 ![Overview](./readme_files/overview.png)
 
+
 [![arXiv](https://img.shields.io/badge/arXiv-2510.21657-b31b1b.svg)](https://arxiv.org/abs/2510.21657)
+[![arXiv](https://img.shields.io/badge/arXiv-2510.21657-b31b1b.svg)](https://arxiv.org/abs/2607.18033)
+
 
 ---
 
